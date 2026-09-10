@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+    html {
+        line-height: 1.35;
+        letter-spacing: -0.011em;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+        color: #1e293b;
+        background-color: #f8fafc;
+    }
+
+    /* Force crisp sharp corners on all form elements and buttons */
+    input, select, textarea, button, .rounded-full, .rounded-2xl, .rounded-xl, .rounded-lg, .rounded-md {
+        border-radius: 4px !important;
+    }
+
+    /* Sharp avatars and status indicators if explicitly circular */
+    .avatar-circle {
+        border-radius: 9999px !important;
+    }
+
+    /* Tight typography */
+    h1, h2, h3, h4, h5, h6 {
+        line-height: 1.25 !important;
+        letter-spacing: -0.02em !important;
+    }
+
+    /* High density tables */
+    table th, table td {
+        line-height: 1.3 !important;
+    }
+}
+
+@layer utilities {
+    .sharp-card {
+        border-radius: 4px !important;
+        border: 1px solid #e2e8f0 !important;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05) !important;
+    }
+    .sharp-badge {
+        border-radius: 3px !important;
+        padding: 0.15rem 0.5rem !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        line-height: 1.2 !important;
+    }
+}
+
