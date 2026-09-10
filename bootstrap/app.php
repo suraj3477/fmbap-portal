@@ -22,6 +22,12 @@ $app = Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'approved' => \App\Http\Middleware\EnsureAccountIsApproved::class,
         ]);
+
+        // Exempt public auth actions from CSRF token expiration on serverless
+        $middleware->validateCsrfTokens(except: [
+            'login',
+            'logout',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //
