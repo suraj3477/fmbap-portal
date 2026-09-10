@@ -16,11 +16,17 @@ use Inertia\Inertia;
 
 // Public Logo Asset Route
 Route::get('/logo.png', function () {
-    $path = public_path('logo.png');
-    if (file_exists($path)) {
-        return response()->file($path, ['Content-Type' => 'image/png']);
+    $candidates = [
+        public_path('logo.png'),
+        base_path('public/logo.png'),
+        __DIR__ . '/../public/logo.png',
+    ];
+    foreach ($candidates as $candidate) {
+        if (file_exists($candidate)) {
+            return response()->file($candidate, ['Content-Type' => 'image/png']);
+        }
     }
-    abort(404);
+    return response(base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), 200, ['Content-Type' => 'image/png']);
 });
 
 // Public Entry - Redirect directly to login page
