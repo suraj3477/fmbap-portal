@@ -113,6 +113,14 @@ if (getenv('SESSION_DOMAIN') === 'null') {
     $_SERVER['SESSION_DOMAIN'] = '';
 }
 
+// Ensure BCRYPT_ROUNDS is valid (between 4 and 31)
+$bcryptRounds = (int) getenv('BCRYPT_ROUNDS');
+if ($bcryptRounds < 4 || $bcryptRounds > 31) {
+    putenv('BCRYPT_ROUNDS=12');
+    $_ENV['BCRYPT_ROUNDS'] = '12';
+    $_SERVER['BCRYPT_ROUNDS'] = '12';
+}
+
 // 4. Force HTTPS server environment for Vercel SSL termination
 if ((isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) {
     $_SERVER['HTTPS'] = 'on';
