@@ -78,5 +78,11 @@ foreach ($defaults as $k => $v) {
     }
 }
 
-// 4. Delegate execution to Laravel's public entrypoint
+// 4. Force HTTPS server environment for Vercel SSL termination
+if ((isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) {
+    $_SERVER['HTTPS'] = 'on';
+    $_SERVER['SERVER_PORT'] = 443;
+}
+
+// 5. Delegate execution to Laravel's public entrypoint
 require __DIR__ . '/../public/index.php';
