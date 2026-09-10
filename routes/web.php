@@ -14,6 +14,15 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// Public Logo Asset Route
+Route::get('/logo.png', function () {
+    $path = public_path('logo.png');
+    if (file_exists($path)) {
+        return response()->file($path, ['Content-Type' => 'image/png']);
+    }
+    abort(404);
+});
+
 // Public Entry - Redirect directly to login page
 Route::get('/', function () {
     return redirect()->route('login');
