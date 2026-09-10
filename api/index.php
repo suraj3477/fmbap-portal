@@ -8,14 +8,8 @@
 $storagePath = '/tmp/storage';
 if (!is_dir($storagePath)) {
     @mkdir($storagePath, 0755, true);
-    @mkdir($storagePath . '/framework/views', 0755, true);
-    @mkdir($storagePath . '/framework/cache', 0755, true);
-    @mkdir($storagePath . '/framework/cache/data', 0755, true);
-    @mkdir($storagePath . '/framework/sessions', 0755, true);
-    @mkdir($storagePath . '/logs', 0755, true);
 }
 
-// Ensure subdirectories exist
 @mkdir($storagePath . '/framework/views', 0755, true);
 @mkdir($storagePath . '/framework/cache/data', 0755, true);
 @mkdir($storagePath . '/framework/sessions', 0755, true);
@@ -58,53 +52,30 @@ if (!file_exists($tmpDb) && file_exists($bundledDb)) {
     @copy($bundledDb, $tmpDb);
 }
 
-// 3. Set resilient serverless defaults
-if (empty($_ENV['DB_CONNECTION']) && empty(getenv('DB_CONNECTION'))) {
-    putenv('DB_CONNECTION=sqlite');
-    $_ENV['DB_CONNECTION'] = 'sqlite';
-    $_SERVER['DB_CONNECTION'] = 'sqlite';
-}
+// 3. Set resilient defaults for any empty or missing environment variables
+$defaults = [
+    'APP_MAINTENANCE_DRIVER' => 'file',
+    'APP_MAINTENANCE_STORE'  => 'database',
+    'DB_CONNECTION'          => 'sqlite',
+    'DB_DATABASE'            => $tmpDb,
+    'SESSION_DRIVER'         => 'cookie',
+    'CACHE_STORE'            => 'array',
+    'QUEUE_CONNECTION'       => 'sync',
+    'LOG_CHANNEL'            => 'stderr',
+    'MAIL_MAILER'            => 'log',
+    'BROADCAST_CONNECTION'   => 'log',
+    'APP_ENV'                => 'production',
+    'APP_DEBUG'              => 'true',
+    'APP_KEY'                => 'base64:cHK9pF3RfTxCotwo05bA3nNYwDnf07mw3lAZLXDEnS0=',
+];
 
-if (empty($_ENV['DB_DATABASE']) && empty(getenv('DB_DATABASE'))) {
-    putenv("DB_DATABASE={$tmpDb}");
-    $_ENV['DB_DATABASE'] = $tmpDb;
-    $_SERVER['DB_DATABASE'] = $tmpDb;
-}
-
-if (empty($_ENV['SESSION_DRIVER']) && empty(getenv('SESSION_DRIVER'))) {
-    putenv('SESSION_DRIVER=cookie');
-    $_ENV['SESSION_DRIVER'] = 'cookie';
-    $_SERVER['SESSION_DRIVER'] = 'cookie';
-}
-
-if (empty($_ENV['CACHE_STORE']) && empty(getenv('CACHE_STORE'))) {
-    putenv('CACHE_STORE=array');
-    $_ENV['CACHE_STORE'] = 'array';
-    $_SERVER['CACHE_STORE'] = 'array';
-}
-
-if (empty($_ENV['LOG_CHANNEL']) && empty(getenv('LOG_CHANNEL'))) {
-    putenv('LOG_CHANNEL=stderr');
-    $_ENV['LOG_CHANNEL'] = 'stderr';
-    $_SERVER['LOG_CHANNEL'] = 'stderr';
-}
-
-if (empty($_ENV['APP_KEY']) && empty(getenv('APP_KEY'))) {
-    putenv('APP_KEY=base64:cHK9pF3RfTxCotwo05bA3nNYwDnf07mw3lAZLXDEnS0=');
-    $_ENV['APP_KEY'] = 'base64:cHK9pF3RfTxCotwo05bA3nNYwDnf07mw3lAZLXDEnS0=';
-    $_SERVER['APP_KEY'] = 'base64:cHK9pF3RfTxCotwo05bA3nNYwDnf07mw3lAZLXDEnS0=';
-}
-
-if (empty($_ENV['APP_ENV']) && empty(getenv('APP_ENV'))) {
-    putenv('APP_ENV=production');
-    $_ENV['APP_ENV'] = 'production';
-    $_SERVER['APP_ENV'] = 'production';
-}
-
-if (empty($_ENV['APP_DEBUG']) && empty(getenv('APP_DEBUG'))) {
-    putenv('APP_DEBUG=true');
-    $_ENV['APP_DEBUG'] = 'true';
-    $_SERVER['APP_DEBUG'] = 'true';
+foreach ($defaults as $k => $v) {
+    $current = getenv($k);
+    if ($current === false || trim((string)$current) === '') {
+        putenv("{$k}={$v}");
+        $_ENV[$k] = $v;
+        $_SERVER[$k] = $v;
+    }
 }
 
 // 4. Delegate execution to Laravel's public entrypoint
