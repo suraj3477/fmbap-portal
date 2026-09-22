@@ -29,6 +29,11 @@ class PaymentRequestController extends Controller
      */
     public function create(Request $request)
     {
+        $user = auth()->user();
+        if (!$user->isState() && !$user->isSuperAdmin()) {
+            abort(403, 'Only State officials or Super Admins can initiate fund release claims.');
+        }
+
         $availableSchemes = Scheme::active()
             ->with('fmbapProject')
             ->orderByDesc('id')
@@ -83,6 +88,9 @@ class PaymentRequestController extends Controller
         ]);
 
         $user = auth()->user();
+        if (!$user->isState() && !$user->isSuperAdmin()) {
+            abort(403, 'Only State officials or Super Admins can initiate fund release claims.');
+        }
 
         // Find or create Draft
         if ($validated['payment_request_id'] ?? false) {
@@ -141,9 +149,22 @@ class PaymentRequestController extends Controller
                     $fmbapProject->status      = 'SUBMITTED_BY_STATE';
                 }
 
-                if (isset($validated['estimated_cost_cr'])) $fmbapProject->estimated_cost_cr = $validated['estimated_cost_cr'];
+                if (isset($validated['estimated_cost_cr'])) {
+                    $fmbapProject->estimated_cost_cr = $validated['estimated_cost_cr'];
+                    if ($paymentRequest->scheme) {
+                        $paymentRequest->scheme->sanctioned_amount_cr = $validated['estimated_cost_cr'];
+                        $paymentRequest->scheme->estimated_cost_lakh = round($validated['estimated_cost_cr'] * 100, 2);
+                    }
+                }
                 if (isset($validated['executed_amount_cr'])) $fmbapProject->executed_amount_cr = $validated['executed_amount_cr'];
-                if (isset($validated['funding_pattern'])) $fmbapProject->funding_pattern = $validated['funding_pattern'];
+                if (isset($validated['funding_pattern'])) {
+                    $fmbapProject->funding_pattern = $validated['funding_pattern'];
+                    $parts = explode('/', $validated['funding_pattern']);
+                    if (count($parts) === 2 && is_numeric($parts[0]) && is_numeric($parts[1]) && $paymentRequest->scheme) {
+                        $paymentRequest->scheme->central_share_pct = (int) $parts[0];
+                        $paymentRequest->scheme->state_share_pct = (int) $parts[1];
+                    }
+                }
                 if (isset($validated['central_share_cr'])) $fmbapProject->central_share_cr = $validated['central_share_cr'];
                 if (isset($validated['state_share_cr'])) $fmbapProject->state_share_cr = $validated['state_share_cr'];
                 if (isset($validated['released_central_share_cr'])) $fmbapProject->released_central_share_cr = $validated['released_central_share_cr'];
@@ -158,6 +179,10 @@ class PaymentRequestController extends Controller
                 }
 
                 $fmbapProject->save();
+
+                if ($paymentRequest->scheme) {
+                    $paymentRequest->scheme->save();
+                }
             }
         }
 

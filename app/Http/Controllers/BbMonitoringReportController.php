@@ -142,6 +142,27 @@ class BbMonitoringReportController extends Controller
 
         $report->save();
 
+        // Automatically update the parent Scheme physical progress & metadata from BB verified inspection
+        if ($paymentRequest->scheme && $report->bb_physical_progress_pct !== null) {
+            $scheme = $paymentRequest->scheme;
+            $bbPct = (float) $report->bb_physical_progress_pct;
+            $schemeMetadata = $scheme->metadata ?? [];
+            $schemeMetadata['bb_verified_progress_pct'] = $bbPct;
+            $schemeMetadata['bb_financial_progress_pct'] = (float) ($report->bb_financial_progress_pct ?? 0);
+            $schemeMetadata['bb_inspection_date'] = $report->inspection_date ? \Carbon\Carbon::parse($report->inspection_date)->format('Y-m-d') : null;
+            $schemeMetadata['source'] = 'Brahmaputra Board Monitoring';
+            $schemeMetadata['updated_by'] = 'Brahmaputra Board';
+
+            $scheme->physical_progress_pct = $bbPct;
+            if ($bbPct >= 100) {
+                $scheme->physical_status = 'Completed';
+            } elseif ($bbPct > 0 && $scheme->physical_status === 'Not Started') {
+                $scheme->physical_status = 'Ongoing';
+            }
+            $scheme->metadata = $schemeMetadata;
+            $scheme->save();
+        }
+
         return response()->json([
             'message' => 'Saved successfully',
             'report_id' => $report->id,

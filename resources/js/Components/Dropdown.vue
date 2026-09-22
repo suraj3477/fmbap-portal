@@ -7,7 +7,7 @@ const props = defineProps({
         default: 'right',
     },
     width: {
-        type: String,
+        type: [String, Number],
         default: '48',
     },
     contentClasses: {
@@ -26,9 +26,16 @@ onMounted(() => document.addEventListener('keydown', closeOnEscape));
 onUnmounted(() => document.removeEventListener('keydown', closeOnEscape));
 
 const widthClass = computed(() => {
-    return {
-        48: 'w-48',
-    }[props.width.toString()];
+    const w = props.width.toString();
+    const map = {
+        '48': 'w-48',
+        '56': 'w-56',
+        '64': 'w-64',
+        '72': 'w-72',
+        '80': 'w-80',
+        '96': 'w-96',
+    };
+    return map[w] || `w-[${w}]`;
 });
 
 const alignmentClasses = computed(() => {
@@ -58,21 +65,21 @@ const open = ref(false);
         ></div>
 
         <Transition
-            enter-active-class="transition ease-out duration-200"
-            enter-from-class="opacity-0 scale-95"
-            enter-to-class="opacity-100 scale-100"
-            leave-active-class="transition ease-in duration-75"
-            leave-from-class="opacity-100 scale-100"
-            leave-to-class="opacity-0 scale-95"
+            enter-active-class="transition ease-out duration-150"
+            enter-from-class="opacity-0 scale-95 -translate-y-1"
+            enter-to-class="opacity-100 scale-100 translate-y-0"
+            leave-active-class="transition ease-in duration-100"
+            leave-from-class="opacity-100 scale-100 translate-y-0"
+            leave-to-class="opacity-0 scale-95 -translate-y-1"
         >
             <div
                 v-show="open"
-                class="absolute z-50 mt-1 rounded-sm shadow-md"
+                class="absolute z-50 mt-2 rounded-2xl shadow-xl"
                 :class="[widthClass, alignmentClasses]"
                 @click="open = false"
             >
                 <div
-                    class="rounded-sm border border-slate-200 shadow-sm"
+                    class="rounded-2xl border border-slate-200/80 shadow-xl overflow-hidden"
                     :class="contentClasses"
                 >
                     <slot name="content" />

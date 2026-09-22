@@ -17,12 +17,38 @@ const props = defineProps({
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user || {});
 const effectiveRole = computed(() => props.userRole || currentUser.value?.role || '');
+const isStateOfficial = computed(() => ['state_official', 'state', 'super_admin'].includes(effectiveRole.value));
 
-// ─── Search, Filter, Pagination ───
+// ─── Search, Filter, Sort, Pagination ───
 const search = ref('');
+const selectedState = ref('ALL');
+const selectedBasin = ref('ALL');
+const selectedFY = ref('ALL');
 const statusFilter = ref('ALL');
+const sortBy = ref('NEWEST'); // 'NEWEST' | 'AMOUNT_DESC' | 'PROGRESS_DESC'
 const currentPage = ref(1);
 const perPage = 10;
+
+// Helper to determine financial year
+const getClaimFY = (r) => {
+    if (r.scheme?.metadata?.financial_year) return r.scheme.metadata.financial_year;
+    if (r.scheme?.financial_year) return r.scheme.financial_year;
+    if (r.metadata?.financial_year) return r.metadata.financial_year;
+    const dateStr = r.submitted_at || r.created_at || r.scheme?.created_at;
+    if (!dateStr) return '2026-2027';
+    try {
+        const d = new Date(dateStr);
+        const y = d.getFullYear();
+        const m = d.getMonth() + 1; // 1-12
+        if (m >= 4) {
+            return `${y}-${y + 1}`;
+        } else {
+            return `${y - 1}-${y}`;
+        }
+    } catch {
+        return '2026-2027';
+    }
+};
 
 // ─── Metrics calculation ───
 const totalCount = computed(() => props.requests.length);
@@ -47,18 +73,50 @@ const draftCount = computed(() =>
     props.requests.filter(r => r.status === 'DRAFT').length
 );
 
-// ─── Filtering ───
+// Available States, Basins & FYs
+const availableStates = computed(() => {
+    const set = new Set(props.requests.map(r => r.scheme?.state).filter(Boolean));
+    return ['ALL', ...Array.from(set)];
+});
+
+const availableBasins = computed(() => {
+    const set = new Set(props.requests.map(r => r.scheme?.river_basin).filter(Boolean));
+    return ['ALL', ...Array.from(set)];
+});
+
+const availableFYs = computed(() => {
+    const fromData = props.requests.map(r => getClaimFY(r)).filter(Boolean);
+    const defaults = ['2026-2027', '2025-2026', '2024-2025', '2023-2024', '2022-2023'];
+    const set = new Set([...fromData, ...defaults]);
+    const sorted = Array.from(set).sort().reverse();
+    return ['ALL', ...sorted];
+});
+
+// ─── Filtering & Sorting ───
 const filteredRequests = computed(() => {
     const q = search.value.trim().toLowerCase();
-    return props.requests.filter(r => {
-        // Search term matching
+    
+    const list = props.requests.filter(r => {
         const code = r.scheme?.scheme_code?.toLowerCase() || '';
         const name = r.scheme?.scheme_name?.toLowerCase() || '';
         const idStr = String(r.id);
         const instStr = String(r.instalment_number || '');
-        const matchesQuery = !q || code.includes(q) || name.includes(q) || idStr.includes(q) || instStr.includes(q);
+        const div = (r.scheme?.division || r.scheme?.district || '').toLowerCase();
+        const matchesQuery = !q || code.includes(q) || name.includes(q) || idStr.includes(q) || instStr.includes(q) || div.includes(q);
 
         if (!matchesQuery) return false;
+
+        if (selectedState.value !== 'ALL' && r.scheme?.state !== selectedState.value) {
+            return false;
+        }
+
+        if (selectedBasin.value !== 'ALL' && r.scheme?.river_basin !== selectedBasin.value) {
+            return false;
+        }
+
+        if (selectedFY.value !== 'ALL' && getClaimFY(r) !== selectedFY.value) {
+            return false;
+        }
 
         // Status tab matching
         if (statusFilter.value === 'APPROVED') return r.status === 'APPROVED';
@@ -68,6 +126,19 @@ const filteredRequests = computed(() => {
 
         return true;
     });
+
+    return list.sort((a, b) => {
+        if (sortBy.value === 'AMOUNT_DESC') {
+            return (parseFloat(b.requested_amount_cr) || 0) - (parseFloat(a.requested_amount_cr) || 0);
+        }
+        if (sortBy.value === 'PROGRESS_DESC') {
+            return (parseFloat(b.physical_progress_pct) || 0) - (parseFloat(a.physical_progress_pct) || 0);
+        }
+        if (sortBy.value === 'NEWEST') {
+            return (b.id || 0) - (a.id || 0);
+        }
+        return (b.id || 0) - (a.id || 0);
+    });
 });
 
 const totalPages = computed(() => Math.max(1, Math.ceil(filteredRequests.value.length / perPage)));
@@ -75,15 +146,15 @@ const paginatedRequests = computed(() => {
     const start = (currentPage.value - 1) * perPage;
     return filteredRequests.value.slice(start, start + perPage);
 });
-const pageNumbers = computed(() => Array.from({ length: totalPages.value }, (_, i) => i + 1));
 
-watch([search, statusFilter], () => {
+watch([search, selectedState, selectedBasin, selectedFY, statusFilter, sortBy], () => {
     currentPage.value = 1;
 });
 
 const goToPage = (n) => {
     if (n >= 1 && n <= totalPages.value) {
         currentPage.value = n;
+        window.scrollTo({ top: 300, behavior: 'smooth' });
     }
 };
 
@@ -100,385 +171,510 @@ const formatDate = (dateStr) => {
 const getStatusBadge = (status) => {
     switch (status) {
         case 'APPROVED':
-            return { label: 'Approved', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
+            return { label: 'Approved & Released', class: 'bg-emerald-100 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' };
         case 'FORWARDED_TO_MOJS':
-            return { label: 'MoJS Review', class: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500' };
+            return { label: 'MoJS Review', class: 'bg-indigo-100 text-indigo-800 border-indigo-300', dot: 'bg-indigo-500' };
         case 'BB_MONITORING_PENDING':
-            return { label: 'BB Inspection', class: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-500' };
+            return { label: 'BB Field Audit', class: 'bg-purple-100 text-purple-800 border-purple-300', dot: 'bg-purple-500' };
         case 'SUBMITTED_TO_BB':
-            return { label: 'Submitted to BB', class: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' };
+            return { label: 'Submitted to BB', class: 'bg-blue-100 text-blue-800 border-blue-300', dot: 'bg-blue-500' };
         case 'NEEDS_CORRECTION':
-            return { label: 'Correction Req.', class: 'bg-amber-50 text-amber-800 border-amber-300', dot: 'bg-amber-500' };
+            return { label: 'Action Required', class: 'bg-amber-100 text-amber-900 border-amber-300', dot: 'bg-amber-500' };
         case 'REJECTED':
-            return { label: 'Rejected', class: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' };
+            return { label: 'Rejected', class: 'bg-rose-100 text-rose-800 border-rose-300', dot: 'bg-rose-500' };
         case 'DRAFT':
         default:
-            return { label: 'Draft', class: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
+            return { label: 'Draft', class: 'bg-slate-100 text-slate-700 border-slate-300', dot: 'bg-slate-400' };
     }
+};
+
+// CSV Export
+const exportToCsv = () => {
+    const headers = [
+        'Claim ID',
+        'Scheme Code',
+        'Project Name',
+        'Division Name',
+        'State',
+        'River Basin',
+        'Financial Year',
+        'Date of Submission',
+        'Claimed Amount (Cr)',
+        'Instalment',
+        'Physical Progress %',
+        'Status',
+        'Last Updated'
+    ];
+    const rows = filteredRequests.value.map(r => [
+        `"#CLAIM-${r.id}"`,
+        `"${r.scheme?.scheme_code || ''}"`,
+        `"${(r.scheme?.scheme_name || '').replace(/"/g, '""')}"`,
+        `"${(r.scheme?.division || r.scheme?.district || '').replace(/"/g, '""')}"`,
+        `"${r.scheme?.state || ''}"`,
+        `"${r.scheme?.river_basin || ''}"`,
+        `"FY ${getClaimFY(r)}"`,
+        `"${formatDate(r.submitted_at || r.created_at)}"`,
+        `"${r.requested_amount_cr || 0}"`,
+        `"Instalment ${r.instalment_number || 1}"`,
+        `"${r.physical_progress_pct || 0}"`,
+        `"${r.status || 'DRAFT'}"`,
+        `"${formatDate(r.updated_at || r.created_at)}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `FMBAP_Fund_Claims_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 };
 </script>
 
 <template>
-    <Head title="Fund Release Requests — FMBAP" />
+    <Head title="Fund Release Claims & Statutory Approvals — FMBAP" />
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div class="flex items-center gap-3">
+            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 py-0.5">
+                <div class="flex items-center gap-2.5 min-w-0">
                     <Link
                         :href="route('dashboard')"
-                        class="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 hover:text-gray-900 transition-colors shrink-0"
+                        class="w-8 h-8 rounded-md bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 transition shrink-0"
                         title="Back to Dashboard"
                     >
                         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
                         </svg>
                     </Link>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h2 class="font-bold text-lg text-gray-900 leading-tight">
-                                Fund Release Requests
-                            </h2>
-                            <span class="text-xs font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200">
-                                Module 1
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h1 class="text-base sm:text-lg font-black text-slate-900 tracking-tight leading-none">
+                                Fund Release Claims &amp; Statutory Releases
+                            </h1>
+                            <span class="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-[#0F4C9F] border border-blue-200">
+                                <span class="w-1.5 h-1.5 rounded-full bg-[#0F4C9F]"></span>
+                                Central Assistance
                             </span>
                         </div>
-                        <p class="text-xs text-gray-500 mt-0.5">
-                            Payment claims, instalment tracking, and central release approvals under FMBAP
+                        <p class="text-xs text-slate-500 font-medium mt-1 truncate">
+                            Payment Claims &bull; GFR-12A UC Tracking &bull; Brahmaputra Board Field Verification &bull; MoJS Approval Pipeline
                         </p>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2.5">
+                <!-- Header Actions (Streamlined Single Row) -->
+                <div class="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
                     <Link
-                        v-if="effectiveRole === 'state_official' || effectiveRole === 'super_admin'"
+                        v-if="['state_official', 'super_admin'].includes(effectiveRole)"
                         :href="route('fund-release.create')"
-                        class="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm hover:shadow transition-all"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded-md shadow-xs transition"
                     >
-                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
                         </svg>
-                        New Payment Request
+                        <span>Initiate Fund Claim</span>
                     </Link>
+
+                    <button
+                        type="button"
+                        @click="exportToCsv"
+                        class="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-xs font-semibold rounded-md shadow-2xs transition cursor-pointer"
+                        title="Export filtered claims to CSV"
+                    >
+                        <svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clip-rule="evenodd" />
+                        </svg>
+                        <span>Export CSV</span>
+                    </button>
                 </div>
             </div>
         </template>
 
-        <div class="py-6 px-4 sm:px-6 lg:px-8 space-y-5 max-w-screen-2xl mx-auto">
+        <div class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 py-5 space-y-5">
 
-            <!-- ─── STAT STRIP ─── -->
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
+            <!-- ─── 1. EXECUTIVE METRIC CARDS ─── -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Total Claim Volume -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Total Claims Registered</span>
+                        <span class="p-1.5 bg-blue-50 text-[#0F4C9F] rounded-lg">₹ Cr</span>
                     </div>
                     <div>
-                        <div class="text-2xl font-extrabold text-gray-900 leading-none">{{ totalCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Total Requests</div>
+                        <div class="text-2xl sm:text-3xl font-black text-slate-900 leading-tight">
+                            ₹{{ totalAmountCr }} <span class="text-sm font-semibold text-slate-500">Cr</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 mt-1 flex items-center justify-between font-medium">
+                            <span>Cumulative Pipeline</span>
+                            <span class="text-[#0F4C9F] font-bold">{{ totalCount }} Claims</span>
+                        </div>
                     </div>
                 </div>
 
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                        ₹
+                <!-- Approved & Released -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-emerald-800">Approved &amp; Released</span>
+                        <span class="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">✓</span>
                     </div>
                     <div>
-                        <div class="text-2xl font-extrabold text-emerald-700 leading-none">₹{{ totalAmountCr }} Cr</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Total Claimed</div>
+                        <div class="text-2xl sm:text-3xl font-black text-emerald-950 leading-tight">
+                            {{ approvedCount }} <span class="text-base font-bold text-slate-600">released</span>
+                        </div>
+                        <div class="text-[11px] text-emerald-700 mt-1 font-medium">
+                            MoJS Formal Central Release Approved
+                        </div>
                     </div>
                 </div>
 
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                        </svg>
+                <!-- Under Active Verification -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-blue-800">Under Review Pipeline</span>
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                            {{ underReviewCount }} Active
+                        </span>
                     </div>
                     <div>
-                        <div class="text-2xl font-extrabold text-emerald-600 leading-none">{{ approvedCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Approved & Released</div>
+                        <div class="text-2xl sm:text-3xl font-black text-blue-950 leading-tight">
+                            {{ underReviewCount }} <span class="text-base font-bold text-slate-600">in verification</span>
+                        </div>
+                        <div class="text-[11px] text-blue-700 mt-1 font-medium">
+                            At Brahmaputra Board / MoJS Desk
+                        </div>
                     </div>
                 </div>
 
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
+                <!-- Requires Correction -->
+                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-amber-800">Action Required</span>
+                        <span class="p-1.5 bg-amber-50 text-amber-700 rounded-lg">⚠️</span>
                     </div>
                     <div>
-                        <div class="text-2xl font-extrabold text-blue-600 leading-none">{{ underReviewCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Under Review</div>
-                    </div>
-                </div>
-
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="text-2xl font-extrabold text-amber-600 leading-none">{{ needsCorrectionCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Action Required</div>
+                        <div class="text-2xl sm:text-3xl font-black text-amber-950 leading-tight">
+                            {{ needsCorrectionCount }} <span class="text-base font-bold text-slate-600">queries</span>
+                        </div>
+                        <div class="text-[11px] text-amber-700 mt-1 font-medium">
+                            Returned for clarification to State Agency
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- ─── MAIN CARD ─── -->
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-
-                <!-- Toolbar -->
-                <div class="px-5 py-4 bg-gray-50/80 border-b border-gray-200 flex flex-col md:flex-row md:items-center justify-between gap-3">
-                    <div class="flex flex-col sm:flex-row sm:items-center gap-3 flex-1">
-                        <!-- Search Box -->
-                        <div class="relative flex-1 max-w-md">
-                            <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0" />
-                            </svg>
-                            <input
-                                v-model="search"
-                                type="text"
-                                placeholder="Search by scheme code, name, or Req #..."
-                                class="w-full border border-gray-200 rounded-xl py-2 pl-9 pr-9 text-xs bg-white text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500"
-                            />
-                            <button
-                                v-if="search"
-                                @click="search = ''"
-                                class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs"
-                            >
-                                ✕
-                            </button>
-                        </div>
-
-                        <!-- Filter Pills -->
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                            <button
-                                @click="statusFilter = 'ALL'"
-                                :class="statusFilter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                            >
-                                All ({{ totalCount }})
-                            </button>
-                            <button
-                                @click="statusFilter = 'APPROVED'"
-                                :class="statusFilter === 'APPROVED' ? 'bg-emerald-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                            >
-                                Approved ({{ approvedCount }})
-                            </button>
-                            <button
-                                @click="statusFilter = 'UNDER_REVIEW'"
-                                :class="statusFilter === 'UNDER_REVIEW' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                            >
-                                Under Review ({{ underReviewCount }})
-                            </button>
-                            <button
-                                v-if="needsCorrectionCount > 0"
-                                @click="statusFilter = 'NEEDS_CORRECTION'"
-                                :class="statusFilter === 'NEEDS_CORRECTION' ? 'bg-amber-600 text-white' : 'bg-white text-amber-700 hover:bg-amber-50 border border-amber-200'"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                            >
-                                Correction ({{ needsCorrectionCount }})
-                            </button>
-                            <button
-                                v-if="draftCount > 0"
-                                @click="statusFilter = 'DRAFT'"
-                                :class="statusFilter === 'DRAFT' ? 'bg-slate-700 text-white' : 'bg-white text-gray-600 hover:bg-gray-100 border border-gray-200'"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg transition"
-                            >
-                                Drafts ({{ draftCount }})
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="text-xs text-gray-500 shrink-0 font-medium">
-                        Showing {{ filteredRequests.length }} of {{ totalCount }}
+            <!-- Correction Alert Banner -->
+            <div v-if="needsCorrectionCount > 0 && isStateOfficial" class="p-4 bg-amber-50 border-2 border-amber-300 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                <div class="flex items-center gap-3">
+                    <span class="text-2xl">⚠️</span>
+                    <div>
+                        <div class="font-bold text-amber-950 text-sm">Action Required: {{ needsCorrectionCount }} Claim(s) Sent Back for Correction</div>
+                        <p class="text-xs text-amber-800 mt-0.5">The Board or Ministry has returned claims for corrections. Click the amber <span class="font-bold">"✏️ Edit"</span> button on any returned claim below to open all 4 submission steps, edit the fields, and re-submit.</p>
                     </div>
                 </div>
+                <button
+                    type="button"
+                    @click="statusFilter = 'NEEDS_CORRECTION'"
+                    class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg transition shrink-0 shadow-xs cursor-pointer"
+                >
+                    Filter Needs Correction ({{ needsCorrectionCount }})
+                </button>
+            </div>
 
-                <!-- Table Content -->
+            <!-- ─── 2. ENTERPRISE FILTER & SEARCH TOOLBAR ─── -->
+            <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
+                <!-- Search Input -->
+                <div class="w-full md:w-80 relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                        </svg>
+                    </div>
+                    <input
+                        v-model="search"
+                        type="text"
+                        placeholder="Search claim #, scheme code, name, basin, division..."
+                        class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-1 focus:ring-[#0F4C9F]"
+                    />
+                </div>
+
+                <!-- Dropdowns & Status Pills -->
+                <div class="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
+                    <!-- State Filter -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-slate-500 font-bold uppercase text-[10px]">State:</span>
+                        <select
+                            v-model="selectedState"
+                            class="py-1.5 px-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium focus:bg-white"
+                        >
+                            <option value="ALL">All States</option>
+                            <option v-for="st in availableStates.filter(s => s !== 'ALL')" :key="st" :value="st">
+                                {{ st }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Basin Filter -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-slate-500 font-bold uppercase text-[10px]">Basin:</span>
+                        <select
+                            v-model="selectedBasin"
+                            class="py-1.5 px-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium focus:bg-white"
+                        >
+                            <option value="ALL">All River Basins</option>
+                            <option v-for="bs in availableBasins.filter(b => b !== 'ALL')" :key="bs" :value="bs">
+                                {{ bs }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Financial Year Filter -->
+                    <div class="flex items-center gap-1.5">
+                        <span class="text-slate-500 font-bold uppercase text-[10px]">FY:</span>
+                        <select
+                            v-model="selectedFY"
+                            class="py-1.5 px-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium focus:bg-white"
+                        >
+                            <option value="ALL">All Financial Years</option>
+                            <option v-for="fy in availableFYs.filter(f => f !== 'ALL')" :key="fy" :value="fy">
+                                FY {{ fy }}
+                            </option>
+                        </select>
+                    </div>
+
+                    <!-- Status Filter Pills -->
+                    <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+                        <button
+                            type="button"
+                            @click="statusFilter = 'ALL'"
+                            :class="statusFilter === 'ALL' ? 'bg-white text-slate-900 font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                            class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer"
+                        >
+                            All ({{ totalCount }})
+                        </button>
+                        <button
+                            type="button"
+                            @click="statusFilter = 'APPROVED'"
+                            :class="statusFilter === 'APPROVED' ? 'bg-emerald-600 text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                            class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer"
+                        >
+                            Approved ({{ approvedCount }})
+                        </button>
+                        <button
+                            type="button"
+                            @click="statusFilter = 'UNDER_REVIEW'"
+                            :class="statusFilter === 'UNDER_REVIEW' ? 'bg-[#0F4C9F] text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                            class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer"
+                        >
+                            Review ({{ underReviewCount }})
+                        </button>
+                        <button
+                            v-if="needsCorrectionCount > 0"
+                            type="button"
+                            @click="statusFilter = 'NEEDS_CORRECTION'"
+                            :class="statusFilter === 'NEEDS_CORRECTION' ? 'bg-amber-500 text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                            class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer"
+                        >
+                            Correction ({{ needsCorrectionCount }})
+                        </button>
+                    </div>
+
+                    <!-- Sort -->
+                    <div class="flex items-center gap-1.5">
+                        <select
+                            v-model="sortBy"
+                            class="py-1.5 px-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium focus:bg-white"
+                        >
+                            <option value="NEWEST">Newest Claims</option>
+                            <option value="AMOUNT_DESC">Claim Amount (High to Low)</option>
+                            <option value="PROGRESS_DESC">Progress (High to Low)</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ─── 3. ENTERPRISE CLAIMS TABLE ─── -->
+            <div class="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
                 <div class="overflow-x-auto">
-                    <table class="w-full text-left text-xs">
-                        <thead class="bg-gray-50/50 border-b border-gray-200 text-gray-500 font-semibold uppercase tracking-wider text-[11px]">
-                            <tr>
-                                <th class="px-5 py-3.5">Req ID & Scheme</th>
-                                <th class="px-5 py-3.5">Requested Amount</th>
-                                <th class="px-5 py-3.5">Instalment</th>
-                                <th class="px-5 py-3.5">Status</th>
-                                <th class="px-5 py-3.5">Date</th>
-                                <th class="px-5 py-3.5 text-right">Actions</th>
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="bg-[#0F4C9F] text-white font-bold uppercase tracking-wider text-[10px]">
+                                <th class="py-3 px-3 text-center w-10">#</th>
+                                <th class="py-3 px-3 text-center min-w-[90px]">Claim #</th>
+                                <th class="py-3 px-3 min-w-[130px]">Scheme Code</th>
+                                <th class="py-3 px-3 min-w-[240px]">Project Name</th>
+                                <th class="py-3 px-3 min-w-[130px]">Division Name</th>
+                                <th class="py-3 px-3 min-w-[130px]">State &amp; River Basin</th>
+                                <th class="py-3 px-3 text-center min-w-[120px]">Date of Submission</th>
+                                <th class="py-3 px-3 text-right min-w-[120px]">Claimed Amount</th>
+                                <th class="py-3 px-3 text-center min-w-[90px]">Instalment</th>
+                                <th class="py-3 px-3 text-center min-w-[120px]">Physical Progress</th>
+                                <th class="py-3 px-3 text-center min-w-[150px]">Status &amp; Last Updated</th>
+                                <th class="py-3 px-3 text-center min-w-[90px]">Actions</th>
                             </tr>
                         </thead>
-                        <tbody class="divide-y divide-gray-100 text-gray-700">
+                        <tbody class="divide-y divide-slate-100 text-slate-800">
                             <tr
-                                v-for="req in paginatedRequests"
+                                v-for="(req, index) in paginatedRequests"
                                 :key="req.id"
-                                class="hover:bg-blue-50/40 transition-colors group"
+                                :class="[
+                                    index % 2 === 0 ? 'bg-white' : 'bg-slate-50/40',
+                                    'hover:bg-blue-50/30 transition'
+                                ]"
                             >
-                                <!-- Req ID & Scheme -->
-                                <td class="px-5 py-3.5">
-                                    <div class="flex items-start gap-2.5">
-                                        <span class="font-mono text-xs font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200 shrink-0">
-                                            #{{ req.id }}
-                                        </span>
-                                        <div class="min-w-0">
-                                            <div class="font-bold text-blue-700 text-xs flex items-center gap-1.5">
-                                                <span>{{ req.scheme?.scheme_code || 'UNASSIGNED' }}</span>
-                                            </div>
-                                            <div class="text-xs text-gray-600 truncate max-w-xs md:max-w-md mt-0.5" :title="req.scheme?.scheme_name">
-                                                {{ req.scheme?.scheme_name || 'No scheme description available' }}
-                                            </div>
-                                        </div>
+                                <!-- Index -->
+                                <td class="py-2.5 px-3 text-center font-mono text-slate-400 font-bold">
+                                    {{ (currentPage - 1) * perPage + index + 1 }}
+                                </td>
+
+                                <!-- Claim ID -->
+                                <td class="py-2.5 px-3 text-center font-mono text-blue-900 font-bold whitespace-nowrap">
+                                    <span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-800 border border-slate-200">
+                                        #CLAIM-{{ req.id }}
+                                    </span>
+                                </td>
+
+                                <!-- Scheme Code -->
+                                <td class="py-2.5 px-3 font-mono">
+                                    <span class="inline-block px-2 py-0.5 rounded text-[11px] font-bold bg-blue-100 text-[#0F4C9F] uppercase border border-blue-200 whitespace-nowrap">
+                                        {{ req.scheme?.scheme_code || 'UNASSIGNED' }}
+                                    </span>
+                                    <span v-if="req.scheme?.plan_period" class="text-[10px] text-slate-500 font-semibold block mt-0.5">
+                                        {{ req.scheme.plan_period }}
+                                    </span>
+                                </td>
+
+                                <!-- Project Name -->
+                                <td class="py-2.5 px-3">
+                                    <div class="font-bold text-slate-900 leading-snug">
+                                        {{ req.scheme?.scheme_name || 'No scheme description available' }}
                                     </div>
                                 </td>
 
-                                <!-- Requested Amount -->
-                                <td class="px-5 py-3.5 font-mono">
-                                    <div class="text-sm font-bold text-gray-900">
-                                        ₹{{ req.requested_amount_cr }} <span class="text-xs text-gray-500 font-normal">Cr</span>
+                                <!-- Division Name -->
+                                <td class="py-2.5 px-3">
+                                    <div class="font-bold text-slate-800 text-xs">
+                                        {{ req.scheme?.division || req.scheme?.district || 'Assam WRD' }}
+                                    </div>
+                                </td>
+
+                                <!-- State & River Basin -->
+                                <td class="py-2.5 px-3">
+                                    <div class="font-bold text-slate-900">{{ req.scheme?.state || 'Assam' }}</div>
+                                    <div class="text-[11px] text-blue-700 font-semibold flex items-center gap-1 mt-0.5">
+                                        <span>🌊</span> {{ req.scheme?.river_basin || 'Brahmaputra' }}
+                                    </div>
+                                </td>
+
+                                <!-- Date of Submission -->
+                                <td class="py-2.5 px-3 text-center font-mono text-[11px] text-slate-700 font-medium whitespace-nowrap">
+                                    {{ formatDate(req.submitted_at || req.created_at) }}
+                                </td>
+
+                                <!-- Claimed Amount -->
+                                <td class="py-2.5 px-3 text-right font-mono">
+                                    <div class="font-black text-slate-900 text-xs">
+                                        ₹{{ parseFloat(req.requested_amount_cr || 0).toFixed(2) }} Cr
+                                    </div>
+                                    <div class="text-[10px] text-slate-500">
+                                        (₹{{ (parseFloat(req.requested_amount_cr || 0) * 100).toFixed(0) }} L)
                                     </div>
                                 </td>
 
                                 <!-- Instalment -->
-                                <td class="px-5 py-3.5">
-                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
-                                        Instalment {{ req.instalment_number ? '#' + req.instalment_number : 'N/A' }}
+                                <td class="py-2.5 px-3 text-center">
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 whitespace-nowrap">
+                                        Instalment #{{ req.instalment_number || '1' }}
                                     </span>
                                 </td>
 
-                                <!-- Status Badge -->
-                                <td class="px-5 py-3.5">
+                                <!-- Physical Progress -->
+                                <td class="py-2.5 px-3 text-center">
+                                    <div class="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
+                                        <span>{{ parseFloat(req.physical_progress_pct || 0) }}%</span>
+                                        <span v-if="parseFloat(req.physical_progress_pct) >= 100" class="text-emerald-600 font-bold text-[10px]">Done</span>
+                                    </div>
+                                    <div class="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                                        <div
+                                            class="h-full rounded-full transition-all duration-300"
+                                            :class="parseFloat(req.physical_progress_pct) >= 95 ? 'bg-emerald-500' : (parseFloat(req.physical_progress_pct) >= 40 ? 'bg-amber-500' : 'bg-blue-600')"
+                                            :style="{ width: `${parseFloat(req.physical_progress_pct || 0)}%` }"
+                                        ></div>
+                                    </div>
+                                </td>
+
+                                <!-- Status & Last Updated -->
+                                <td class="py-2.5 px-3 text-center">
                                     <span
-                                        :class="['inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg border leading-tight', getStatusBadge(req.status).class]"
+                                        :class="['inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border leading-tight', getStatusBadge(req.status).class]"
                                     >
                                         <span :class="['w-1.5 h-1.5 rounded-full', getStatusBadge(req.status).dot]"></span>
                                         {{ getStatusBadge(req.status).label }}
                                     </span>
-                                </td>
-
-                                <!-- Created Date -->
-                                <td class="px-5 py-3.5 text-gray-500 font-medium text-xs">
-                                    {{ formatDate(req.created_at) }}
+                                    <div class="text-[10px] text-slate-500 mt-1 leading-tight whitespace-nowrap">
+                                        <span class="font-medium">{{ formatDate(req.updated_at || req.submitted_at || req.created_at) }}</span>
+                                        <span class="block text-[9px] text-slate-400 font-semibold">by {{ req.metadata?.updated_by || (req.status === 'APPROVED' ? 'MoJS Approver' : 'State WRD') }}</span>
+                                    </div>
                                 </td>
 
                                 <!-- Actions -->
-                                <td class="px-5 py-3.5 text-right">
-                                    <div class="inline-flex items-center gap-2">
+                                <td class="py-2.5 px-3 text-center">
+                                    <div class="flex items-center justify-center gap-1.5 flex-wrap">
                                         <Link
-                                            v-if="req.status === 'DRAFT' || req.status === 'NEEDS_CORRECTION'"
+                                            v-if="req.status === 'NEEDS_CORRECTION' && isStateOfficial"
                                             :href="route('fund-release.edit', req.id)"
-                                            class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 transition"
+                                            class="px-2.5 py-1 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] transition shadow-2xs inline-flex items-center gap-1 cursor-pointer"
+                                            title="Edit and correct this claim"
                                         >
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                                            </svg>
-                                            Edit
+                                            <span>✏️ Edit</span>
                                         </Link>
-
-                                        <Link
-                                            v-if="req.status === 'DRAFT'"
-                                            :href="route('fund-release.destroy', req.id)"
-                                            method="delete"
-                                            as="button"
-                                            class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 transition"
-                                        >
-                                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                            Delete
-                                        </Link>
-
                                         <Link
                                             :href="route('fund-release.show', req.id)"
-                                            class="inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 shadow-xs transition"
+                                            class="px-2.5 py-1 rounded bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white font-bold text-[11px] transition shadow-2xs inline-block"
                                         >
-                                            <span>View Dossier</span>
-                                            <svg class="w-3.5 h-3.5 text-gray-400 group-hover:text-blue-600 transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
-                                            </svg>
+                                            <span>Dossier &rarr;</span>
                                         </Link>
                                     </div>
                                 </td>
                             </tr>
 
-                            <!-- Empty State -->
+                            <!-- Empty Row -->
                             <tr v-if="filteredRequests.length === 0">
-                                <td colspan="6" class="px-5 py-16 text-center">
-                                    <div class="flex flex-col items-center justify-center gap-2">
-                                        <div class="w-12 h-12 rounded-2xl bg-gray-100 text-gray-400 flex items-center justify-center text-xl">
-                                            📄
-                                        </div>
-                                        <p class="font-bold text-gray-700 text-sm">
-                                            {{ totalCount === 0 ? 'No fund release requests submitted yet.' : 'No requests match your current filters.' }}
-                                        </p>
-                                        <p class="text-xs text-gray-400 max-w-sm">
-                                            {{ totalCount === 0 && (effectiveRole === 'state_official' || effectiveRole === 'super_admin') 
-                                                ? 'Click "+ New Payment Request" above to initiate a new claim for an approved scheme.' 
-                                                : 'Try clearing the search query or changing the status filter tabs.' }}
-                                        </p>
-                                        <button
-                                            v-if="statusFilter !== 'ALL' || search"
-                                            @click="statusFilter = 'ALL'; search = ''"
-                                            class="mt-2 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3.5 py-1.5 rounded-lg transition"
-                                        >
-                                            Clear Filters
-                                        </button>
-                                    </div>
+                                <td colspan="12" class="p-8 text-center text-slate-500 italic">
+                                    No fund release requests match your search or filter criteria.
                                 </td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- Pagination Footer -->
-                <div v-if="filteredRequests.length > 0" class="px-5 py-3.5 bg-gray-50/70 border-t border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div class="text-gray-500 font-medium">
-                        Showing <span class="font-bold text-gray-800">{{ (currentPage - 1) * perPage + 1 }}</span>
-                        to <span class="font-bold text-gray-800">{{ Math.min(currentPage * perPage, filteredRequests.length) }}</span>
-                        of <span class="font-bold text-gray-800">{{ filteredRequests.length }}</span> entries
+                <!-- Footer Summary & Pagination -->
+                <div class="bg-slate-50 border-t border-slate-200 px-4 py-3 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+                    <div>
+                        Showing <strong>{{ filteredRequests.length > 0 ? (currentPage - 1) * perPage + 1 : 0 }}</strong> to <strong>{{ Math.min(currentPage * perPage, filteredRequests.length) }}</strong> of <strong>{{ filteredRequests.length }}</strong> claims
                     </div>
 
-                    <div v-if="totalPages > 1" class="flex items-center gap-1.5 self-center sm:self-auto">
+                    <div v-if="totalPages > 1" class="flex items-center gap-1.5">
                         <button
+                            type="button"
                             @click="goToPage(currentPage - 1)"
-                            :disabled="currentPage === 1"
-                            class="px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition"
+                            :disabled="currentPage <= 1"
+                            class="px-2.5 py-1 rounded bg-white border border-slate-300 disabled:opacity-40 hover:bg-slate-100 font-semibold cursor-pointer"
                         >
                             &larr; Prev
                         </button>
-
+                        <span class="px-2 font-bold text-slate-800">Page {{ currentPage }} of {{ totalPages }}</span>
                         <button
-                            v-for="p in pageNumbers"
-                            :key="p"
-                            @click="goToPage(p)"
-                            :class="p === currentPage ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-gray-600 hover:bg-gray-100 border border-transparent'"
-                            class="w-7 h-7 rounded-lg flex items-center justify-center text-xs transition"
-                        >
-                            {{ p }}
-                        </button>
-
-                        <button
+                            type="button"
                             @click="goToPage(currentPage + 1)"
-                            :disabled="currentPage === totalPages"
-                            class="px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed font-medium transition"
+                            :disabled="currentPage >= totalPages"
+                            class="px-2.5 py-1 rounded bg-white border border-slate-300 disabled:opacity-40 hover:bg-slate-100 font-semibold cursor-pointer"
                         >
                             Next &rarr;
                         </button>
                     </div>
                 </div>
-
             </div>
 
         </div>

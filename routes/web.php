@@ -92,6 +92,24 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
             'fmbapProject',
         ])->orderByDesc('id')->get();
 
+        foreach ($schemes as $scheme) {
+            if ($scheme->fmbapProject && !empty($scheme->fmbapProject->funding_pattern)) {
+                $parts = explode('/', $scheme->fmbapProject->funding_pattern);
+                if (count($parts) === 2 && is_numeric($parts[0]) && is_numeric($parts[1])) {
+                    $cPct = (int) $parts[0];
+                    $sPct = (int) $parts[1];
+                    if ($scheme->central_share_pct != $cPct || $scheme->state_share_pct != $sPct) {
+                        $scheme->update([
+                            'central_share_pct' => $cPct,
+                            'state_share_pct'   => $sPct,
+                        ]);
+                    }
+                    $scheme->central_share_pct = $cPct;
+                    $scheme->state_share_pct = $sPct;
+                }
+            }
+        }
+
         return Inertia::render('Dashboard', [
             'userRole'     => $user->role,
             'moduleCounts' => $moduleCounts,
@@ -140,6 +158,7 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
 
     // Scheme Catalogue API
     Route::get('/api/schemes/search', [SchemeController::class, 'apiSearch'])->name('schemes.search');
+    Route::get('/api/schemes/next-code', [SchemeController::class, 'nextCode'])->name('schemes.next-code');
 
     // MODULE 1: Fund Release (Payment Requests)
     Route::prefix('fund-release')->name('fund-release.')->group(function () {

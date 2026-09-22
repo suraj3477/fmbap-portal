@@ -28,7 +28,7 @@ class SchemeController extends Controller
                 if ($user->role === 'state_official') {
                     $q->where('user_id', $user->id);
                 }
-                $q->latest();
+                $q->with('bbMonitoringReport')->latest();
             },
             'progressReports' => function ($q) use ($user) {
                 if ($user->role === 'state_official') {
@@ -38,6 +38,24 @@ class SchemeController extends Controller
             },
             'fmbapProject',
         ])->orderByDesc('id')->get();
+
+        foreach ($schemes as $scheme) {
+            if ($scheme->fmbapProject && !empty($scheme->fmbapProject->funding_pattern)) {
+                $parts = explode('/', $scheme->fmbapProject->funding_pattern);
+                if (count($parts) === 2 && is_numeric($parts[0]) && is_numeric($parts[1])) {
+                    $cPct = (int) $parts[0];
+                    $sPct = (int) $parts[1];
+                    if ($scheme->central_share_pct != $cPct || $scheme->state_share_pct != $sPct) {
+                        $scheme->update([
+                            'central_share_pct' => $cPct,
+                            'state_share_pct'   => $sPct,
+                        ]);
+                    }
+                    $scheme->central_share_pct = $cPct;
+                    $scheme->state_share_pct = $sPct;
+                }
+            }
+        }
 
         $totalSanctioned = Scheme::sum('sanctioned_amount_cr');
         $completedCount  = Scheme::where('physical_status', 'Completed')->count();
@@ -144,6 +162,13 @@ class SchemeController extends Controller
      */
     public function store(Request $request)
     {
+        $messages = [
+            'scheme_code.required' => 'Scheme Code is required (e.g. AS-19).',
+            'scheme_code.unique'   => "Scheme Code '{$request->scheme_code}' is already registered in the system. Please enter a unique code.",
+            'scheme_name.required' => 'Please enter the Scheme Title / Project Description.',
+            'estimated_cost_lakh.numeric' => 'Estimated Cost must be a valid number in Lakhs.',
+        ];
+
         $validated = $request->validate([
             'scheme_code'              => 'required|string|max:100|unique:schemes,scheme_code',
             'scheme_name'              => 'required|string',
@@ -164,9 +189,9 @@ class SchemeController extends Controller
             'state_share_pct'          => 'nullable|integer|min:0|max:100',
             'physical_status'          => 'nullable|string',
             'physical_progress_pct'    => 'nullable|numeric|min:0|max:100',
-        ]);
+        ], $messages);
 
-        // Prevent duplicate scheme code insertion
+        // Prevent duplicate scheme code insertion (case-insensitive check)
         $cleanCode = strtolower(trim($validated['scheme_code']));
         $existing = Scheme::whereRaw('LOWER(TRIM(scheme_code)) = ?', [$cleanCode])->first();
 
@@ -188,16 +213,60 @@ class SchemeController extends Controller
 
         $validated['central_share_pct'] = $validated['central_share_pct'] ?? 90;
         $validated['state_share_pct'] = $validated['state_share_pct'] ?? 10;
-        $validated['state'] = $validated['state'] ?? 'Assam';
+        $validated['state'] = $validated['state'] ?? (auth()->user()->state ?? 'Assam');
         $validated['river_basin'] = $validated['river_basin'] ?? 'Brahmaputra';
         $validated['plan_period'] = $validated['plan_period'] ?? 'XI Plan';
         $validated['physical_status'] = $validated['physical_status'] ?? 'Ongoing';
         $validated['physical_progress_pct'] = $validated['physical_progress_pct'] ?? 0;
         $validated['is_active'] = true;
 
-        Scheme::create($validated);
+        $scheme = Scheme::create($validated);
 
-        return redirect()->back()->with('success', 'Scheme created successfully and added to the Master Catalogue.');
+        return redirect()->back()->with('success', "Scheme {$scheme->scheme_code} created successfully and added to the Master Catalogue.");
+    }
+
+    /**
+     * API to generate next available unique scheme code.
+     */
+    public function nextCode(Request $request)
+    {
+        $state = $request->query('state', auth()->user()->state ?? 'Assam');
+        $prefix = match (strtolower(trim($state))) {
+            'assam'             => 'AS',
+            'arunachal pradesh' => 'AR',
+            'meghalaya'         => 'ML',
+            'manipur'           => 'MN',
+            'mizoram'           => 'MZ',
+            'nagaland'          => 'NL',
+            'tripura'           => 'TR',
+            'sikkim'            => 'SK',
+            'west bengal'       => 'WB',
+            default             => 'SCH',
+        };
+
+        $codes = Scheme::where('scheme_code', 'like', "{$prefix}-%")->pluck('scheme_code');
+        $max = 0;
+        foreach ($codes as $c) {
+            if (preg_match('/' . preg_quote($prefix, '/') . '-(\d+)/i', $c, $matches)) {
+                $num = intval($matches[1]);
+                if ($num > $max && $num < 1000) {
+                    $max = $num;
+                }
+            }
+        }
+
+        $nextNum = max($max + 1, 1);
+        $nextCode = sprintf("%s-%02d", $prefix, $nextNum);
+
+        while (Scheme::where('scheme_code', $nextCode)->exists()) {
+            $nextNum++;
+            $nextCode = sprintf("%s-%02d", $prefix, $nextNum);
+        }
+
+        return response()->json([
+            'prefix'    => $prefix,
+            'next_code' => $nextCode,
+        ]);
     }
 
     /**

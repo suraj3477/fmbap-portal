@@ -21,6 +21,7 @@
         "vue": "^3.4.0"
     },
     "dependencies": {
+        "leaflet": "^1.9.4",
         "ziggy-js": "^2.6.4"
     }
 }

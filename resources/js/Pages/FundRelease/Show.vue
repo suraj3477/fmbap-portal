@@ -31,6 +31,10 @@ const summary = computed(() => props.dossier?.summary || {});
 
 const isBB = computed(() => props.userRole === 'board_official' || props.userRole === 'super_admin');
 const isMoJS = computed(() => props.userRole === 'mojs_official' || props.userRole === 'super_admin');
+const isStateOfficial = computed(() => ['state_official', 'state', 'super_admin'].includes(props.userRole));
+const canEditForCorrection = computed(() => 
+    payment_request.value?.status === 'NEEDS_CORRECTION' && isStateOfficial.value
+);
 
 const showDecisionModal = ref(false);
 const decisionType = ref(''); // 'FORWARDED_TO_MOJS', 'APPROVED', 'NEEDS_CORRECTION', 'REJECTED'
@@ -62,18 +66,64 @@ const submitDecision = () => {
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex justify-between items-center">
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                    Consolidated Dossier: #{{ payment_request.id }}
-                </h2>
-                <a :href="route('fund-release.dossier', payment_request.id)" class="text-sm font-semibold text-blue-600 bg-white border border-blue-600 px-4 py-2 rounded shadow-sm hover:bg-blue-50">
-                    Download PDF
-                </a>
+            <div class="flex justify-between items-center flex-wrap gap-3">
+                <div class="flex items-center gap-3">
+                    <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+                        Consolidated Dossier: #{{ payment_request.id }}
+                    </h2>
+                    <span
+                        v-if="payment_request.status === 'NEEDS_CORRECTION'"
+                        class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                    >
+                        ⚠️ Sent Back for Correction
+                    </span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <Link
+                        v-if="canEditForCorrection"
+                        :href="route('fund-release.edit', payment_request.id)"
+                        class="text-sm font-bold text-white bg-amber-600 hover:bg-amber-700 px-4 py-2 rounded-lg shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                        <span>✏️ Edit &amp; Resubmit Request</span>
+                    </Link>
+                    <a :href="route('fund-release.dossier', payment_request.id)" class="text-sm font-semibold text-blue-600 bg-white border border-blue-600 px-4 py-2 rounded shadow-sm hover:bg-blue-50">
+                        Download PDF
+                    </a>
+                </div>
             </div>
         </template>
 
         <div class="py-8 mx-auto sm:px-6 lg:px-8 w-full">
             
+            <!-- Sent Back for Correction Notification Banner -->
+            <div v-if="payment_request.status === 'NEEDS_CORRECTION'" class="bg-amber-50 border-2 border-amber-400 rounded-xl p-5 mb-6 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+                <div class="flex items-start gap-3.5">
+                    <div class="p-2.5 bg-amber-100 rounded-xl text-amber-800 text-xl shrink-0">
+                        ⚠️
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h3 class="font-black text-amber-900 text-base">Claim Returned to State for Correction</h3>
+                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-200 text-amber-900 border border-amber-300">
+                                Action Required
+                            </span>
+                        </div>
+                        <p class="text-xs text-amber-800 mt-1 leading-relaxed">
+                            <strong class="text-amber-950">Reason / Directives:</strong> {{ payment_request.bb_remarks || payment_request.mojs_remarks || 'Please review remarks and update the claim data / attachments.' }}
+                        </p>
+                    </div>
+                </div>
+                <Link
+                    v-if="canEditForCorrection"
+                    :href="route('fund-release.edit', payment_request.id)"
+                    class="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-lg shadow-md hover:shadow-lg transition shrink-0 flex items-center gap-2"
+                >
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                    <span>✏️ Edit &amp; Resubmit Request &rarr;</span>
+                </Link>
+            </div>
+
             <!-- Workflow Status -->
             <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
                 <WorkflowStatusBar :steps="steps" />
@@ -405,7 +455,26 @@ const submitDecision = () => {
                                 </button>
                             </template>
 
-                            <div v-if="!isBB && !isMoJS" class="text-sm text-gray-500 italic text-center">
+                            <!-- State Action when sent back for correction -->
+                            <template v-if="canEditForCorrection">
+                                <div class="p-4 bg-amber-50 rounded-xl border border-amber-300 space-y-3">
+                                    <div class="font-bold text-amber-950 text-xs flex items-center gap-1.5">
+                                        <span class="text-base">✏️</span> Action Required from State
+                                    </div>
+                                    <p class="text-[11px] text-amber-800 leading-relaxed">
+                                        This claim was sent back for correction. Click below to open the submission wizard, modify financial or physical metrics, re-upload documents, and resubmit to the Board.
+                                    </p>
+                                    <Link
+                                        :href="route('fund-release.edit', payment_request.id)"
+                                        class="w-full bg-amber-600 hover:bg-amber-700 text-white font-bold py-2.5 rounded-lg flex items-center justify-center gap-2 text-center text-xs shadow transition cursor-pointer"
+                                    >
+                                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                        <span>Edit &amp; Resubmit Request</span>
+                                    </Link>
+                                </div>
+                            </template>
+
+                            <div v-else-if="!isBB && !isMoJS" class="text-sm text-gray-500 italic text-center">
                                 Awaiting action from higher authority.
                             </div>
                         </div>

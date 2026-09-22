@@ -19,7 +19,7 @@ defineProps({
             <div class="w-full mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
                 <!-- Branding -->
                 <div class="flex items-center space-x-4">
-                    <ApplicationLogo class="w-12 h-12" />
+                    <ApplicationLogo class="h-14 w-auto" />
                     <div>
                         <h1 class="text-lg font-bold text-slate-900 uppercase tracking-tight leading-none">
                             Brahmaputra Board
