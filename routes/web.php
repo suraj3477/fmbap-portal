@@ -10,6 +10,7 @@ use App\Http\Controllers\PaymentRequestController;
 use App\Http\Controllers\BbMonitoringReportController;
 use App\Http\Controllers\ProgressReportController;
 use App\Http\Controllers\AuditLogController;
+use App\Http\Controllers\MisAnalyticsController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -165,6 +166,8 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::get('/', [PaymentRequestController::class, 'index'])->name('index');
         Route::get('/create', [PaymentRequestController::class, 'create'])->name('create');
         Route::post('/', [PaymentRequestController::class, 'store'])->name('store');
+        Route::get('/gfr12a/data', [PaymentRequestController::class, 'gfr12aData'])->name('gfr12a.data');
+        Route::post('/gfr12a/generate', [PaymentRequestController::class, 'generateGfr12a'])->name('gfr12a.generate');
         Route::get('/{fund_release}', [PaymentRequestController::class, 'show'])->name('show');
         Route::get('/{fund_release}/edit', [PaymentRequestController::class, 'edit'])->name('edit');
         Route::put('/{fund_release}', [PaymentRequestController::class, 'update'])->name('update');
@@ -191,6 +194,13 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
 
     // Audit Trail
     Route::get('/{module}/{id}/audit', [AuditLogController::class, 'index'])->name('audit');
+
+    // MODULE 4: Executive MIS Analytics & Parliamentary Reports
+    Route::prefix('analytics')->name('analytics.')->group(function () {
+        Route::get('/', [MisAnalyticsController::class, 'index'])->name('index');
+        Route::get('/export-excel', [MisAnalyticsController::class, 'exportExcel'])->name('export-excel');
+        Route::get('/export-pdf', [MisAnalyticsController::class, 'exportPdf'])->name('export-pdf');
+    });
 
     // -------------------------
 

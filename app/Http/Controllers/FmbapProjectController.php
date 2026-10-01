@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\FmbapProject;
+use App\Models\FmbapDocument;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -369,5 +371,42 @@ class FmbapProjectController extends Controller
     public function export()
     {
         return \Maatwebsite\Excel\Facades\Excel::download(new \App\Exports\FmbapProjectExport(auth()->user()), 'fmbap_proposals.xlsx');
+    }
+
+    public function downloadPdf(FmbapProject $fmbapProject)
+    {
+        $fmbapProject->load(['scheme']);
+        $pdf = Pdf::loadView('pdf.project_report', [
+            'project' => $fmbapProject,
+            'generated_at' => now()->format('d M Y, H:i \I\S\T'),
+        ])->setPaper('a4', 'portrait');
+
+        $code = $fmbapProject->scheme_code ?: ('PRJ-' . $fmbapProject->id);
+        return $pdf->download("FMBAP_Project_{$code}.pdf");
+    }
+
+    public function uploadDocument(Request $request, FmbapProject $fmbapProject)
+    {
+        $validated = $request->validate([
+            'document_type' => 'required|string',
+            'file' => 'required|file|max:20480',
+            'latitude' => 'nullable|string',
+            'longitude' => 'nullable|string',
+        ]);
+
+        $file = $request->file('file');
+        $path = '/storage/' . $file->store('fmbap_docs', 'public');
+
+        FmbapDocument::create([
+            'fmbap_project_id' => $fmbapProject->id,
+            'file_name' => $file->getClientOriginalName(),
+            'file_path' => $path,
+            'document_type' => $validated['document_type'],
+            'uploaded_by' => auth()->user()->name ?? 'Officer',
+            'latitude' => $validated['latitude'] ?? null,
+            'longitude' => $validated['longitude'] ?? null,
+        ]);
+
+        return back()->with('success', 'Document uploaded successfully.');
     }
 }

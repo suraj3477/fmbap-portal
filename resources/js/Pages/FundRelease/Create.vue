@@ -5,6 +5,7 @@ import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import WizardStepIndicator from '@/Components/WizardStepIndicator.vue';
 import SchemeSearchDropdown from '@/Components/SchemeSearchDropdown.vue';
+import Gfr12aModal from '@/Components/Gfr12aModal.vue';
 
 const props = defineProps({
     userRole: String,
@@ -22,6 +23,12 @@ const currentStep = ref(1);
 const steps = ['Scheme Details', 'Financial Request', 'Progress Metrics', 'Supporting Docs'];
 const isSubmitting = ref(false);
 const errorMsg = ref('');
+const isGfrModalOpen = ref(false);
+const attachedGfrPath = ref('');
+
+const onGfrAttached = (path) => {
+    attachedGfrPath.value = path;
+};
 
 const form = ref({
     payment_request_id: null,
@@ -789,16 +796,43 @@ const saveStep = async (isFinalSubmit = false) => {
                     <div v-if="currentStep === 4" class="space-y-6 animate-fade-in">
                         <div class="border-b pb-4">
                             <h3 class="text-lg font-bold text-gray-900">Step 4: Upload Statutory Supporting Documents</h3>
-                            <p class="text-xs text-gray-500 mt-1">Attach certified Utilization Certificates (GFR 12-C) and site expenditure vouchers for Brahmaputra Board audit.</p>
+                            <p class="text-xs text-gray-500 mt-1">Attach certified Utilization Certificates (GFR 12-A) and site expenditure vouchers for Brahmaputra Board audit.</p>
+                        </div>
+
+                        <!-- Form GFR 12-A Assistant Banner -->
+                        <div class="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 shadow-2xs">
+                            <div class="flex items-center gap-3">
+                                <span class="text-2xl p-2 bg-blue-100 rounded-xl">📜</span>
+                                <div>
+                                    <div class="text-xs font-black text-blue-950 uppercase tracking-wide">Statutory Form GFR 12-A Assistant</div>
+                                    <div class="text-[11px] text-blue-700">Auto-generate and certify your statutory Utilization Certificate under Rule 238(1) with pre-filled sanction balances.</div>
+                                </div>
+                            </div>
+                            <button
+                                type="button"
+                                @click="isGfrModalOpen = true"
+                                class="px-4 py-2 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                            >
+                                <span>✨ Auto-Generate Form GFR 12-A</span>
+                            </button>
+                        </div>
+
+                        <!-- Attached GFR 12-A Banner -->
+                        <div v-if="attachedGfrPath" class="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900 font-bold">
+                            <span class="flex items-center gap-1.5">
+                                <span>✅</span>
+                                <span>Attached Statutory Form GFR 12-A</span>
+                            </span>
+                            <a :href="attachedGfrPath" target="_blank" class="text-blue-700 hover:underline">View Attached Certificate &rarr;</a>
                         </div>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <!-- Utilization Certificate (UC) -->
                             <div class="border-2 border-dashed border-blue-300 rounded-2xl p-6 bg-blue-50/40 text-center relative hover:bg-blue-50/80 transition">
                                 <svg class="mx-auto h-9 w-9 text-blue-500 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                                <label class="block text-sm font-bold text-gray-800">Utilization Certificate (UC / GFR 12-C) <span class="text-red-500">*</span></label>
+                                <label class="block text-sm font-bold text-gray-800">Utilization Certificate (UC / GFR 12-A) <span class="text-red-500">*</span></label>
                                 <p class="text-xs text-gray-500 mb-3">Certified PDF format, max 20MB</p>
-                                <input type="file" @change="e => handleFileUpload(e, 'utilization_certificate')" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" required>
+                                <input type="file" @change="e => handleFileUpload(e, 'utilization_certificate')" accept=".pdf" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" :required="!attachedGfrPath">
                                 <div v-if="form.utilization_certificate" class="text-xs text-blue-700 font-bold bg-blue-100 py-1.5 px-3 rounded-lg inline-flex items-center gap-1.5 mt-2">
                                     <svg class="w-4 h-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
                                     {{ form.utilization_certificate.name }}
@@ -866,6 +900,18 @@ const saveStep = async (isFinalSubmit = false) => {
                 </form>
             </div>
         </div>
+
+        <Gfr12aModal
+            :is-open="isGfrModalOpen"
+            :scheme-id="form.scheme_id"
+            :payment-request-id="form.payment_request_id"
+            :current-physical-progress="form.physical_progress_pct"
+            :current-financial-progress="form.financial_progress_pct"
+            :current-requested-amount="form.requested_amount_cr"
+            :current-instalment="form.instalment_number"
+            @close="isGfrModalOpen = false"
+            @attached="onGfrAttached"
+        />
     </AuthenticatedLayout>
 </template>
 

@@ -237,6 +237,16 @@ const canViewMonitoring = computed(() =>
                             BB Site Monitoring
                         </Link>
 
+                        <Link
+                            :href="route('analytics.index')"
+                            :class="[
+                                route().current('analytics.*') ? 'bg-white text-[#0F4C9F] shadow-xs font-extrabold' : 'text-blue-100/90 hover:bg-white/10 hover:text-white font-medium',
+                                'px-3.5 py-2 rounded-lg text-xs transition'
+                            ]"
+                        >
+                            Executive MIS &amp; Analytics
+                        </Link>
+
                         <!-- Super Admin Users Link -->
                         <Link
                             v-if="$page.props.auth.user.role === 'super_admin'"
@@ -277,6 +287,12 @@ const canViewMonitoring = computed(() =>
                         class="block px-3 py-2 rounded-md text-xs font-bold text-white hover:bg-white/10"
                     >
                         BB Site Monitoring
+                    </Link>
+                    <Link
+                        :href="route('analytics.index')"
+                        class="block px-3 py-2 rounded-md text-xs font-bold text-white hover:bg-white/10"
+                    >
+                        Executive MIS &amp; Analytics
                     </Link>
                     <Link
                         v-if="$page.props.auth.user.role === 'super_admin'"

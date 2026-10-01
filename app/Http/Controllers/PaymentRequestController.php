@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\PaymentRequest;
 use App\Models\Scheme;
 use App\Services\DossierService;
+use App\Services\Gfr12aService;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -354,12 +356,79 @@ class PaymentRequestController extends Controller
     }
 
     /**
-     * Download Dossier PDF (Placeholder for future DomPDF integration)
+     * Download Consolidated Official Dossier PDF
      */
-    public function downloadDossier(PaymentRequest $fund_release)
+    public function downloadDossier(PaymentRequest $fund_release, DossierService $dossierService)
     {
-        // For now, redirect to view
-        return redirect()->route('fund-release.show', $fund_release->id)->with('info', 'PDF Generation coming soon.');
+        $dossier = $dossierService->build($fund_release);
+        $steps = $dossierService->getWorkflowSteps($fund_release->status);
+
+        $pdf = Pdf::loadView('pdf.dossier', [
+            'dossier'        => $dossier,
+            'steps'          => $steps,
+            'paymentRequest' => $fund_release,
+            'generated_at'   => now()->format('d M Y, H:i \I\S\T'),
+        ])->setPaper('a4', 'portrait')
+          ->setOption(['isHtml5ParserEnabled' => true, 'isRemoteEnabled' => true]);
+
+        $code = $fund_release->scheme?->scheme_code ?: ('PR-' . $fund_release->id);
+        return $pdf->download("FMBAP_Dossier_{$code}_Instalment_{$fund_release->instalment_number}.pdf");
+    }
+
+    /**
+     * Fetch pre-filled GFR-12A data for a scheme / payment request.
+     */
+    public function gfr12aData(Request $request, Gfr12aService $gfrService)
+    {
+        $request->validate(['scheme_id' => 'required|exists:schemes,id']);
+        $scheme = Scheme::findOrFail($request->scheme_id);
+        $paymentRequest = $request->payment_request_id ? PaymentRequest::find($request->payment_request_id) : null;
+
+        $data = $gfrService->getPreFillData($scheme, $paymentRequest);
+        return response()->json($data);
+    }
+
+    /**
+     * Generate GFR-12A PDF (download or attach directly to claim).
+     */
+    public function generateGfr12a(Request $request, Gfr12aService $gfrService)
+    {
+        $validated = $request->validate([
+            'scheme_id'              => 'required|exists:schemes,id',
+            'payment_request_id'     => 'nullable|exists:payment_requests,id',
+            'financial_year'         => 'required|string',
+            'instalment_number'      => 'required|integer|min:1',
+            'sanction_letter_no'     => 'required|string',
+            'sanction_date'          => 'required|string',
+            'central_amount_cr'      => 'required|numeric|min:0',
+            'state_amount_cr'        => 'required|numeric|min:0',
+            'total_amount_cr'        => 'required|numeric|min:0',
+            'utilized_amount_cr'     => 'required|numeric|min:0',
+            'unspent_balance_cr'     => 'required|numeric|min:0',
+            'interest_accrued_cr'    => 'nullable|numeric|min:0',
+            'physical_progress_pct'  => 'required|numeric|min:0|max:100',
+            'financial_progress_pct' => 'required|numeric|min:0|max:100',
+            'officer_name'           => 'nullable|string',
+            'officer_designation'    => 'nullable|string',
+            'action'                 => 'required|in:download,attach',
+        ]);
+
+        $scheme = Scheme::findOrFail($validated['scheme_id']);
+
+        if ($validated['action'] === 'attach' && !empty($validated['payment_request_id'])) {
+            $paymentRequest = PaymentRequest::findOrFail($validated['payment_request_id']);
+            $filePath = $gfrService->generateAndAttach($validated, $paymentRequest);
+
+            return response()->json([
+                'message'   => 'Statutory Form GFR-12A generated and attached to claim successfully.',
+                'file_path' => $filePath,
+            ]);
+        }
+
+        // Direct PDF download
+        $pdf = $gfrService->buildPdf($validated, $scheme);
+        $filename = 'Form_GFR12A_' . ($scheme->scheme_code ?: 'Scheme') . '_Instalment_' . $validated['instalment_number'] . '.pdf';
+        return $pdf->download($filename);
     }
 
     /**

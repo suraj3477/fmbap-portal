@@ -420,6 +420,12 @@ const submitManualScheme = () => {
 
                     <div class="flex items-center gap-2">
                         <Link
+                            :href="route('analytics.index')"
+                            class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-md shadow-xs transition"
+                        >
+                            <span>📊 Executive MIS Cockpit</span>
+                        </Link>
+                        <Link
                             :href="route('schemes.index')"
                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded-md shadow-xs transition"
                         >
