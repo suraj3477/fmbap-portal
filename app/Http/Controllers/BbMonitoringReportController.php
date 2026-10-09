@@ -67,6 +67,8 @@ class BbMonitoringReportController extends Controller
             'bb_physical_progress_description' => 'nullable|string',
             'bb_financial_progress_pct'        => 'nullable|numeric|min:0|max:100',
             'bb_financial_progress_description'=> 'nullable|string',
+            'bb_recommended_amount_cr'         => 'nullable|numeric|min:0',
+            'bb_recommendation_justification'  => 'nullable|string',
             'bb_report_doc'                    => 'nullable|file|mimes:pdf|max:204800',
             'geo_files.*.file'                 => 'nullable|file|mimes:jpeg,png,jpg,mp4|max:20480',
             'geo_files.*.lat'                  => 'nullable|string',
@@ -74,7 +76,7 @@ class BbMonitoringReportController extends Controller
             'geo_files.*.caption'              => 'nullable|string',
             'is_final_submit'                  => 'boolean',
             'decision'                         => 'nullable|in:FORWARDED_TO_MOJS,NEEDS_CORRECTION,REJECTED',
-            'bb_remarks'                        => 'nullable|string',
+            'bb_remarks'                       => 'nullable|string',
         ]);
 
         $report = BbMonitoringReport::firstOrNew([
@@ -93,7 +95,13 @@ class BbMonitoringReportController extends Controller
             'bb_physical_progress_description' => $validated['bb_physical_progress_description'] ?? $report->bb_physical_progress_description,
             'bb_financial_progress_pct'        => $validated['bb_financial_progress_pct'] ?? $report->bb_financial_progress_pct,
             'bb_financial_progress_description'=> $validated['bb_financial_progress_description'] ?? $report->bb_financial_progress_description,
+            'bb_recommended_amount_cr'         => $validated['bb_recommended_amount_cr'] ?? $report->bb_recommended_amount_cr,
+            'bb_recommendation_justification'  => $validated['bb_recommendation_justification'] ?? $report->bb_recommendation_justification,
         ]);
+
+        if (isset($validated['bb_recommended_amount_cr'])) {
+            $paymentRequest->bb_recommended_amount_cr = $validated['bb_recommended_amount_cr'];
+        }
 
         if ($request->hasFile('bb_report_doc')) {
             $report->bb_report_doc_path = '/storage/'.$request->file('bb_report_doc')->store('bb_reports', 'public');
@@ -128,6 +136,9 @@ class BbMonitoringReportController extends Controller
             
             $paymentRequest->status = $decision;
             $paymentRequest->bb_decision = $decision;
+            if (isset($validated['bb_recommended_amount_cr'])) {
+                $paymentRequest->bb_recommended_amount_cr = $validated['bb_recommended_amount_cr'];
+            }
             $paymentRequest->bb_remarks = $validated['bb_remarks'] 
                 ?? $report->bb_physical_progress_description 
                 ?: ($decision === 'FORWARDED_TO_MOJS' 
@@ -137,6 +148,14 @@ class BbMonitoringReportController extends Controller
             if ($decision === 'FORWARDED_TO_MOJS') {
                 $paymentRequest->forwarded_to_mojs_at = now();
             }
+            $paymentRequest->save();
+
+            $recommendedTxt = $paymentRequest->bb_recommended_amount_cr !== null ? " (Recommended: ₹{$paymentRequest->bb_recommended_amount_cr} Cr)" : "";
+            $actionLabel = $decision === 'FORWARDED_TO_MOJS' 
+                ? "BB Inspection Completed{$recommendedTxt} & Forwarded to MoJS" 
+                : ($decision === 'NEEDS_CORRECTION' ? 'BB Sent Back for Correction' : 'BB Rejected Request');
+            $paymentRequest->createRevisionSnapshot($actionLabel);
+        } else {
             $paymentRequest->save();
         }
 

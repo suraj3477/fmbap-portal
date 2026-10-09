@@ -85,7 +85,10 @@ class FmbapMisReportExport implements FromCollection, WithHeadings, WithMapping,
 
         $releasedCentral = (float) $scheme->paymentRequests()
             ->where('status', \App\Models\PaymentRequest::STATUS_APPROVED)
-            ->sum('requested_amount_cr');
+            ->get()
+            ->sum(function($r) {
+                return $r->approved_amount_cr !== null ? (float)$r->approved_amount_cr : (float)$r->requested_amount_cr;
+            });
 
         if ($releasedCentral <= 0 && $scheme->fmbapProject) {
             $releasedCentral = (float) $scheme->fmbapProject->released_central_share_cr;

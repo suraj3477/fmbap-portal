@@ -41,18 +41,51 @@ const decisionType = ref(''); // 'FORWARDED_TO_MOJS', 'APPROVED', 'NEEDS_CORRECT
 const decisionForm = useForm({
     decision: '',
     remarks: '',
+    bb_recommended_amount_cr: '',
+    approved_amount_cr: '',
+    curtailment_reason: '',
+    sanction_order_no: '',
+    sanction_order_date: '',
+    sanction_order_doc: null,
+});
+
+const mojsCurtailmentDiff = computed(() => {
+    const asked = parseFloat(payment_request.value?.requested_amount_cr) || 0;
+    const approved = parseFloat(decisionForm.approved_amount_cr);
+    if (isNaN(approved)) return '0.00';
+    return (asked - approved).toFixed(2);
 });
 
 const openDecisionModal = (type) => {
     decisionType.value = type;
     decisionForm.decision = type;
     decisionForm.remarks = '';
+    
+    if (type === 'APPROVED') {
+        const defaultAmount = payment_request.value?.bb_recommended_amount_cr 
+            ?? bb_monitoring_report.value?.report?.bb_recommended_amount_cr 
+            ?? payment_request.value?.requested_amount_cr 
+            ?? '';
+        decisionForm.approved_amount_cr = defaultAmount;
+        decisionForm.curtailment_reason = 'Unspent SNA Balance / Accrued Interest (GFR 230(8))';
+        const stCode = (payment_request.value?.state || 'NE').substring(0, 3).toUpperCase();
+        const schCode = scheme.value?.scheme_code || 'SCH';
+        decisionForm.sanction_order_no = `MoJS/FMBAP/${stCode}/${schCode}/2026-${payment_request.value?.id}`;
+        decisionForm.sanction_order_date = new Date().toISOString().substring(0, 10);
+        decisionForm.sanction_order_doc = null;
+    } else if (isBB.value) {
+        decisionForm.bb_recommended_amount_cr = payment_request.value?.bb_recommended_amount_cr 
+            ?? payment_request.value?.requested_amount_cr 
+            ?? '';
+    }
+    
     showDecisionModal.value = true;
 };
 
 const submitDecision = () => {
     const routeName = isBB.value ? 'fund-release.bbDecision' : 'fund-release.mojsDecision';
     decisionForm.post(route(routeName, payment_request.value.id), {
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             showDecisionModal.value = false;
@@ -152,6 +185,155 @@ const submitDecision = () => {
                             <div><span class="text-gray-500 block">Requested Amount</span><span class="font-mono font-bold text-blue-700 text-lg">₹{{ summary.requested_amount_cr }} Cr</span></div>
                             <div><span class="text-gray-500 block">Instalment No.</span><span class="font-bold text-gray-900">{{ payment_request.instalment_number || 'N/A' }}</span></div>
                             <div class="col-span-2"><span class="text-gray-500 block">Bank Details</span><span class="font-medium text-gray-900 bg-gray-50 p-2 rounded block mt-1 border">{{ payment_request.bank_details || 'N/A' }}</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Central Allocation, Scrutiny & Sanction Tracking Card -->
+                    <div class="bg-gradient-to-br from-white to-slate-50/70 rounded-xl shadow-sm border border-blue-200 overflow-hidden">
+                        <div class="bg-gradient-to-r from-blue-900 to-indigo-900 px-6 py-4 text-white flex justify-between items-center flex-wrap gap-2">
+                            <div class="flex items-center gap-2.5">
+                                <span class="p-1.5 bg-blue-800 rounded-lg text-sm">🏛️</span>
+                                <div>
+                                    <h3 class="font-bold text-sm tracking-wide uppercase">
+                                        Central Allocation &amp; Sanction Audit (3-Tier Multi-Stakeholder)
+                                    </h3>
+                                    <p class="text-[11px] text-blue-200">
+                                        State Claimed vs. Brahmaputra Board Recommended vs. Ministry Sanctioned Disbursal
+                                    </p>
+                                </div>
+                            </div>
+                            <span 
+                                class="px-2.5 py-1 rounded-md text-xs font-bold"
+                                :class="payment_request.status === 'APPROVED' ? 'bg-emerald-500 text-white' : 'bg-blue-800 text-blue-200'"
+                            >
+                                {{ payment_request.status === 'APPROVED' ? 'Sanction Released' : 'In Workflow Scrutiny' }}
+                            </span>
+                        </div>
+
+                        <div class="p-6 space-y-5">
+                            <!-- 3-Way Metrics Grid -->
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <!-- Stage 1: State Claimed -->
+                                <div class="p-4 rounded-xl border border-blue-100 bg-blue-50/50">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-[10px] font-bold text-blue-700 uppercase tracking-wider">1. State Claimed</span>
+                                        <span class="text-[10px] font-semibold text-blue-600 bg-blue-100/80 px-2 py-0.5 rounded">Asking Amount</span>
+                                    </div>
+                                    <div class="text-xl font-black text-blue-950 font-mono">
+                                        ₹{{ payment_request.requested_amount_cr || '0.00' }} <span class="text-xs font-sans text-blue-700 font-semibold">Cr</span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-1">
+                                        Submitted by {{ payment_request.state || 'State' }} WRD
+                                    </p>
+                                </div>
+
+                                <!-- Stage 2: BB Recommended -->
+                                <div class="p-4 rounded-xl border border-indigo-100 bg-indigo-50/50">
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">2. BB Scrutiny</span>
+                                        <span 
+                                            class="text-[10px] font-semibold px-2 py-0.5 rounded"
+                                            :class="payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'"
+                                        >
+                                            Recommended
+                                        </span>
+                                    </div>
+                                    <div class="text-xl font-black text-indigo-950 font-mono">
+                                        <span v-if="payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr">
+                                            ₹{{ payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr }} <span class="text-xs font-sans text-indigo-700 font-semibold">Cr</span>
+                                        </span>
+                                        <span v-else class="text-sm font-bold text-slate-400 font-sans italic">
+                                            Pending Inspection
+                                        </span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-1">
+                                        Verified by Brahmaputra Board field engineers
+                                    </p>
+                                </div>
+
+                                <!-- Stage 3: MoJS Sanctioned -->
+                                <div 
+                                    class="p-4 rounded-xl border"
+                                    :class="payment_request.status === 'APPROVED' ? 'border-emerald-200 bg-emerald-50/60' : 'border-slate-200 bg-slate-50/60'"
+                                >
+                                    <div class="flex items-center justify-between mb-1">
+                                        <span class="text-[10px] font-bold uppercase tracking-wider" :class="payment_request.status === 'APPROVED' ? 'text-emerald-800' : 'text-slate-600'">
+                                            3. Centre Sanctioned
+                                        </span>
+                                        <span 
+                                            class="text-[10px] font-semibold px-2 py-0.5 rounded"
+                                            :class="payment_request.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-600'"
+                                        >
+                                            {{ payment_request.status === 'APPROVED' ? 'Actual Disbursal' : 'Pending' }}
+                                        </span>
+                                    </div>
+                                    <div class="text-xl font-black font-mono" :class="payment_request.status === 'APPROVED' ? 'text-emerald-950' : 'text-slate-400'">
+                                        <span v-if="payment_request.status === 'APPROVED'">
+                                            ₹{{ payment_request.approved_amount_cr || payment_request.requested_amount_cr }} <span class="text-xs font-sans text-emerald-700 font-semibold">Cr</span>
+                                        </span>
+                                        <span v-else class="text-sm font-bold text-slate-400 font-sans italic">
+                                            Awaiting MoJS Order
+                                        </span>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-1">
+                                        Final allocation by Ministry of Jal Shakti
+                                    </p>
+                                </div>
+                            </div>
+
+                            <!-- Curtailment / Allocation Deduction Alert Banner -->
+                            <div 
+                                v-if="(payment_request.deduction_amount_cr && payment_request.deduction_amount_cr > 0) || (payment_request.status === 'APPROVED' && payment_request.approved_amount_cr && payment_request.approved_amount_cr < payment_request.requested_amount_cr)" 
+                                class="p-4 bg-amber-50/90 border-2 border-amber-300 rounded-xl space-y-2 text-xs"
+                            >
+                                <div class="flex items-center justify-between flex-wrap gap-2">
+                                    <div class="flex items-center gap-2">
+                                        <span class="p-1 bg-amber-200 rounded-md text-amber-900 text-sm font-black">⚠️</span>
+                                        <span class="font-black text-amber-950 text-sm">
+                                            Central Curtailment Recorded: -₹{{ payment_request.deduction_amount_cr || (payment_request.requested_amount_cr - payment_request.approved_amount_cr).toFixed(2) }} Cr
+                                        </span>
+                                    </div>
+                                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-200/90 text-amber-900 border border-amber-300">
+                                        Adjusted Release
+                                    </span>
+                                </div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-amber-900 pt-1">
+                                    <div>
+                                        <span class="font-bold text-amber-950 block">Curtailment / Deduction Grounds:</span>
+                                        <span class="text-slate-700 font-medium">{{ payment_request.curtailment_reason || 'SNA Unspent Balance Deduction / Field Shortfall' }}</span>
+                                    </div>
+                                    <div>
+                                        <span class="font-bold text-amber-950 block">Sanction Remarks / Directives:</span>
+                                        <span class="text-slate-700 font-medium">{{ payment_request.mojs_remarks || 'Deduction applied as per scheme guidelines.' }}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Sanction Order Details & Official PDF -->
+                            <div 
+                                v-if="payment_request.sanction_order_no || payment_request.sanction_order_doc_path" 
+                                class="p-4 bg-emerald-50/80 border border-emerald-200 rounded-xl flex items-center justify-between flex-wrap gap-3 text-xs"
+                            >
+                                <div class="flex items-center gap-3">
+                                    <span class="text-xl p-2 bg-emerald-100 rounded-lg">📜</span>
+                                    <div>
+                                        <div class="font-black text-emerald-950">
+                                            Central Sanction Order: {{ payment_request.sanction_order_no || 'Official MoJS Sanction' }}
+                                        </div>
+                                        <div class="text-[11px] text-emerald-800">
+                                            Sanction Date: {{ payment_request.sanction_order_date || 'Approved Date Recorded' }}
+                                        </div>
+                                    </div>
+                                </div>
+                                <a 
+                                    v-if="payment_request.sanction_order_doc_path" 
+                                    :href="payment_request.sanction_order_doc_path" 
+                                    target="_blank" 
+                                    class="px-3.5 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-lg shadow-2xs transition flex items-center gap-1.5 text-xs"
+                                >
+                                    <span>📄 View Official Sanction Letter (PDF)</span>
+                                </a>
+                            </div>
                         </div>
                     </div>
 
@@ -487,22 +669,175 @@ const submitDecision = () => {
         </div>
 
         <!-- Decision Modal -->
-        <div v-if="showDecisionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-                <h3 class="text-lg font-bold" :class="decisionType === 'REJECTED' ? 'text-red-700' : 'text-gray-900'">
-                    Confirm Action
-                </h3>
+        <div v-if="showDecisionModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+            <div class="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto p-6 sm:p-7 space-y-5 border border-slate-200">
                 
-                <form @submit.prevent="submitDecision">
+                <!-- Modal Header -->
+                <div class="flex items-start justify-between border-b pb-4">
+                    <div class="flex items-center gap-3">
+                        <span 
+                            class="p-2.5 rounded-xl text-xl font-bold"
+                            :class="decisionType === 'APPROVED' ? 'bg-emerald-100 text-emerald-800' : (decisionType === 'REJECTED' ? 'bg-red-100 text-red-800' : 'bg-amber-100 text-amber-800')"
+                        >
+                            {{ decisionType === 'APPROVED' ? '🏛️' : (decisionType === 'REJECTED' ? '🚫' : '⚠️') }}
+                        </span>
+                        <div>
+                            <h3 class="text-lg font-black" :class="decisionType === 'REJECTED' ? 'text-red-900' : 'text-slate-900'">
+                                {{ decisionType === 'APPROVED' ? 'Ministry Sanction & Fund Disbursal Order' : (decisionType === 'REJECTED' ? 'Reject Payment Claim' : 'Return Claim to State for Correction') }}
+                            </h3>
+                            <p class="text-xs text-slate-500 mt-0.5">
+                                {{ decisionType === 'APPROVED' ? 'Record central sanctioned amount, document deductions, and issue sanction order.' : 'Provide official directives and rationale for this decision.' }}
+                            </p>
+                        </div>
+                    </div>
+                    <button type="button" @click="showDecisionModal = false" class="text-slate-400 hover:text-slate-600 font-black text-xl p-1">
+                        ✕
+                    </button>
+                </div>
+                
+                <form @submit.prevent="submitDecision" class="space-y-5">
+                    
+                    <!-- MoJS APPROVED Fields -->
+                    <template v-if="decisionType === 'APPROVED'">
+                        <!-- Comparison Reference Box -->
+                        <div class="grid grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200 text-xs">
+                            <div>
+                                <span class="text-slate-500 block font-semibold uppercase text-[10px]">State Claimed Amount</span>
+                                <span class="text-base font-black text-blue-900 font-mono">₹{{ payment_request.requested_amount_cr || '0.00' }} Cr</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-500 block font-semibold uppercase text-[10px]">BB Recommended Release</span>
+                                <span class="text-base font-black text-indigo-900 font-mono">
+                                    ₹{{ payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr || payment_request.requested_amount_cr }} Cr
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Sanctioned Amount Input -->
+                        <div class="bg-gradient-to-br from-emerald-50/60 to-blue-50/60 p-4 rounded-xl border-2 border-emerald-300 space-y-3">
+                            <label class="block text-sm font-black text-emerald-950">
+                                Sanctioned / Approved Central Release (₹ in Cr) <span class="text-red-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <input 
+                                    type="number" 
+                                    step="0.01" 
+                                    min="0"
+                                    :max="payment_request.requested_amount_cr || 9999"
+                                    v-model="decisionForm.approved_amount_cr" 
+                                    class="w-full rounded-xl border-emerald-300 pr-24 text-lg font-black text-emerald-950 focus:ring-emerald-500 focus:border-emerald-500"
+                                    required
+                                    placeholder="e.g. 3.25"
+                                >
+                                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                    <span class="text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded">₹ Crore</span>
+                                </div>
+                            </div>
+
+                            <!-- Live Curtailment / Deduction Detector -->
+                            <div v-if="parseFloat(mojsCurtailmentDiff) > 0" class="p-3 bg-amber-100 border border-amber-300 rounded-xl space-y-2">
+                                <div class="flex items-center justify-between text-xs font-bold text-amber-950">
+                                    <span>⚠️ Curtailment / Allocation Deduction:</span>
+                                    <span class="font-mono text-sm font-black text-amber-900">-₹{{ mojsCurtailmentDiff }} Cr</span>
+                                </div>
+                                <div>
+                                    <label class="block text-[11px] font-bold text-amber-950 mb-1">Curtailment / Deduction Reason <span class="text-red-600">*</span></label>
+                                    <select 
+                                        v-model="decisionForm.curtailment_reason" 
+                                        class="w-full text-xs rounded-lg border-amber-300 bg-white font-medium text-slate-800 focus:ring-amber-500 focus:border-amber-500"
+                                        required
+                                    >
+                                        <option value="Unspent SNA Balance / Accrued Interest (GFR 230(8))">Unspent SNA Balance / Accrued Interest (GFR 230(8))</option>
+                                        <option value="Field Inspection / Physical Progress Shortfall">Field Inspection / Physical Progress Shortfall</option>
+                                        <option value="Inadmissible / Non-eligible Expenditure Disallowed">Inadmissible / Non-eligible Expenditure Disallowed</option>
+                                        <option value="Annual Budget Tranche Ceiling / Allocation Cap">Annual Budget Tranche Ceiling / Allocation Cap</option>
+                                        <option value="State Matching Share Proportion Pending">State Matching Share Proportion Pending</option>
+                                        <option value="Other Technical / Financial Reason">Other Technical / Financial Reason</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div v-else-if="decisionForm.approved_amount_cr" class="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                                <span>✅</span>
+                                <span>Sanctioning 100% of claimed amount without deduction.</span>
+                            </div>
+                        </div>
+
+                        <!-- Sanction Order Details -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Central Sanction Order Number</label>
+                                <input 
+                                    type="text" 
+                                    v-model="decisionForm.sanction_order_no" 
+                                    class="w-full rounded-lg border-slate-300 text-xs font-medium"
+                                    placeholder="e.g. MoJS/FMBAP/AS/089-Sanction"
+                                >
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-slate-700 mb-1">Sanction Order Date</label>
+                                <input 
+                                    type="date" 
+                                    v-model="decisionForm.sanction_order_date" 
+                                    class="w-full rounded-lg border-slate-300 text-xs font-medium"
+                                >
+                            </div>
+                        </div>
+
+                        <!-- Sanction Order Letter PDF -->
+                        <div>
+                            <label class="block text-xs font-bold text-slate-700 mb-1">
+                                Upload Official Central Sanction Letter (PDF)
+                            </label>
+                            <input 
+                                type="file" 
+                                @change="e => decisionForm.sanction_order_doc = e.target.files[0]" 
+                                accept=".pdf" 
+                                class="block w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-emerald-50 file:text-emerald-700 hover:file:bg-emerald-100 border border-slate-300 rounded-xl p-1"
+                            >
+                        </div>
+                    </template>
+
+                    <!-- Remarks / Justification (Applies to all actions) -->
                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Remarks / Justification <span class="text-red-500">*</span></label>
-                        <textarea v-model="decisionForm.remarks" rows="4" class="w-full border-gray-300 rounded" required placeholder="Enter your remarks here..."></textarea>
+                        <label class="block text-xs font-bold text-slate-700 mb-1">
+                            {{ decisionType === 'APPROVED' ? 'Sanction Conditions & Remarks' : (decisionType === 'NEEDS_CORRECTION' ? 'Correction Directives for State WRD' : 'Rejection Rationale') }}
+                            <span class="text-red-500">*</span>
+                        </label>
+                        <textarea 
+                            v-model="decisionForm.remarks" 
+                            rows="3" 
+                            class="w-full border-slate-300 rounded-xl text-xs text-slate-900 focus:ring-blue-500 focus:border-blue-500" 
+                            required 
+                            :placeholder="decisionType === 'APPROVED' ? 'Enter sanction conditions, IFD concurrence reference, or specific release instructions...' : 'Enter directives for State officials...'"
+                        ></textarea>
                     </div>
                     
-                    <div class="mt-6 flex justify-end gap-3">
-                        <button type="button" @click="showDecisionModal = false" class="px-4 py-2 border rounded font-medium">Cancel</button>
-                        <button type="submit" class="px-4 py-2 text-white rounded font-bold" :class="decisionType === 'REJECTED' ? 'bg-red-600' : 'bg-blue-600'">
-                            Confirm
+                    <!-- Action Buttons -->
+                    <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
+                        <button 
+                            type="button" 
+                            @click="showDecisionModal = false" 
+                            class="px-4 py-2 border border-slate-300 rounded-xl font-semibold text-xs text-slate-700 hover:bg-slate-50 transition"
+                            :disabled="decisionForm.processing"
+                        >
+                            Cancel
+                        </button>
+                        <button 
+                            type="submit" 
+                            class="px-5 py-2.5 text-white rounded-xl font-bold text-xs shadow-md transition flex items-center gap-1.5"
+                            :class="decisionType === 'REJECTED' ? 'bg-red-600 hover:bg-red-700' : (decisionType === 'APPROVED' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700')"
+                            :disabled="decisionForm.processing"
+                        >
+                            <span v-if="decisionForm.processing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                            <span v-if="decisionType === 'APPROVED'">
+                                Confirm Sanction &amp; Disburse ₹{{ decisionForm.approved_amount_cr || payment_request.requested_amount_cr }} Cr →
+                            </span>
+                            <span v-else-if="decisionType === 'NEEDS_CORRECTION'">
+                                Return to State for Correction →
+                            </span>
+                            <span v-else>
+                                Confirm Rejection →
+                            </span>
                         </button>
                     </div>
                 </form>

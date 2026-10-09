@@ -1,0 +1,1 @@
+import{o as a,c as s,n as r}from"./app-PZpbgc1e.js";const c={__name:"ApplicationLogo",props:{class:{type:String,default:"h-12 w-auto"}},setup(t){return(o,n)=>(a(),s("img",{src:"/logo.png",alt:"Brahmaputra Board Logo",class:r(["object-contain shrink-0 drop-shadow-xs transition-transform duration-200",o.$props.class])},null,2))}};export{c as _};

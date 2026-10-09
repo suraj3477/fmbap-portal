@@ -126,6 +126,19 @@
                     &mdash; {{ $paymentRequest->bb_remarks ?: 'Inspection report verified and submitted to MoJS.' }}
                 </td>
             </tr>
+            @if($paymentRequest->bb_recommended_amount_cr || ($dossier['bb_monitoring_report']['report']->bb_recommended_amount_cr ?? null))
+                <tr>
+                    <th>BB Recommended Release</th>
+                    <td colspan="3" style="color: #4338ca; font-weight: bold;">
+                        ₹{{ number_format($paymentRequest->bb_recommended_amount_cr ?? $dossier['bb_monitoring_report']['report']->bb_recommended_amount_cr, 2) }} Cr
+                        @if($paymentRequest->requested_amount_cr > ($paymentRequest->bb_recommended_amount_cr ?? $dossier['bb_monitoring_report']['report']->bb_recommended_amount_cr))
+                            <span style="color: #b45309; font-size: 8.5px; font-weight: normal; margin-left: 8px;">
+                                (Curtailed by ₹{{ number_format($paymentRequest->requested_amount_cr - ($paymentRequest->bb_recommended_amount_cr ?? $dossier['bb_monitoring_report']['report']->bb_recommended_amount_cr), 2) }} Cr based on site verification)
+                            </span>
+                        @endif
+                    </td>
+                </tr>
+            @endif
             @if(!empty($dossier['bb_monitoring_report']['geo_tagged_files']))
                 <tr>
                     <th>Geo-Tagged Evidence</th>
@@ -141,7 +154,7 @@
         </p>
     @endif
 
-    <div class="section-title">4. Ministry of Jal Shakti (MoJS) Final Decision</div>
+    <div class="section-title">4. Ministry of Jal Shakti (MoJS) Final Decision &amp; Central Allocation</div>
     <table class="table">
         <tr>
             <th style="width: 25%;">Final Status</th>
@@ -153,6 +166,36 @@
             <th style="width: 25%;">Decision Date</th>
             <td style="width: 25%;">{{ $paymentRequest->approved_at ? \Carbon\Carbon::parse($paymentRequest->approved_at)->format('d M Y') : 'Pending Final Release' }}</td>
         </tr>
+        @if($paymentRequest->status === 'APPROVED')
+            <tr>
+                <th>State Claimed Amount</th>
+                <td>₹{{ number_format($paymentRequest->requested_amount_cr, 2) }} Cr</td>
+                <th>Sanctioned Central Release</th>
+                <td style="color: #047857; font-weight: bold; font-size: 10.5px;">
+                    ₹{{ number_format($paymentRequest->approved_amount_cr ?? $paymentRequest->requested_amount_cr, 2) }} Cr
+                </td>
+            </tr>
+            @if(($paymentRequest->deduction_amount_cr ?? 0) > 0)
+                <tr style="background-color: #fffbeb;">
+                    <th>Curtailment / Deduction</th>
+                    <td style="color: #b45309; font-weight: bold;">
+                        - ₹{{ number_format($paymentRequest->deduction_amount_cr, 2) }} Cr
+                    </td>
+                    <th>Curtailment Reason</th>
+                    <td style="color: #92400e; font-weight: 600;">
+                        {{ $paymentRequest->curtailment_reason ?: 'SNA Unspent Balance / Disallowed Expenditure' }}
+                    </td>
+                </tr>
+            @endif
+            @if($paymentRequest->sanction_order_no)
+                <tr>
+                    <th>Central Sanction Order</th>
+                    <td><strong>{{ $paymentRequest->sanction_order_no }}</strong></td>
+                    <th>Sanction Date</th>
+                    <td>{{ $paymentRequest->sanction_order_date ? \Carbon\Carbon::parse($paymentRequest->sanction_order_date)->format('d M Y') : 'N/A' }}</td>
+                </tr>
+            @endif
+        @endif
         <tr>
             <th>MoJS Remarks</th>
             <td colspan="3">{{ $paymentRequest->mojs_remarks ?: 'Under central assistance review.' }}</td>

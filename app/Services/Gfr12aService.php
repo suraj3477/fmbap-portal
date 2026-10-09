@@ -18,17 +18,19 @@ class Gfr12aService
         $centralPct = (float) ($scheme->central_share_pct ?: 90);
         $statePct   = (float) ($scheme->state_share_pct ?: 10);
 
-        $requestedCr = $paymentRequest ? (float) $paymentRequest->requested_amount_cr : 0.00;
-        if ($requestedCr <= 0 && $sanctioned > 0) {
+        $effectiveCr = $paymentRequest 
+            ? ((float) ($paymentRequest->approved_amount_cr ?: $paymentRequest->requested_amount_cr)) 
+            : 0.00;
+        if ($effectiveCr <= 0 && $sanctioned > 0) {
             // Default to instalment estimation or full sanctioned
-            $requestedCr = round(($sanctioned * ($centralPct / 100)) / 2, 2);
+            $effectiveCr = round(($sanctioned * ($centralPct / 100)) / 2, 2);
         }
 
-        $centralShareCr = round($requestedCr * ($centralPct / 100), 2);
-        $stateShareCr   = round($requestedCr * ($statePct / 100), 2);
+        $centralShareCr = round($effectiveCr * ($centralPct / 100), 2);
+        $stateShareCr   = round($effectiveCr * ($statePct / 100), 2);
         if ($centralPct >= 90) {
             // Under 90:10, requested central assistance is usually the central share directly
-            $centralShareCr = $requestedCr;
+            $centralShareCr = $effectiveCr;
             $stateShareCr   = round($centralShareCr * ($statePct / $centralPct), 2);
         }
         $totalAvailableCr = round($centralShareCr + $stateShareCr, 2);
@@ -43,8 +45,13 @@ class Gfr12aService
         $fyStart = $now->month >= 4 ? $now->year : $now->year - 1;
         $financialYear = $fyStart . '-' . ($fyStart + 1);
 
-        $sanctionRef = $scheme->metadata['sanction_letter_no'] 
-            ?? ('MoJS/FMBAP/' . ($scheme->state ? strtoupper(substr($scheme->state, 0, 3)) : 'NE') . '/' . ($scheme->scheme_code ?: 'SCH') . '/' . $financialYear);
+        $sanctionRef = $paymentRequest?->sanction_order_no 
+            ?: ($scheme->metadata['sanction_letter_no'] 
+            ?? ('MoJS/FMBAP/' . ($scheme->state ? strtoupper(substr($scheme->state, 0, 3)) : 'NE') . '/' . ($scheme->scheme_code ?: 'SCH') . '/' . $financialYear));
+
+        $sanctionDate = $paymentRequest?->sanction_order_date 
+            ? \Carbon\Carbon::parse($paymentRequest->sanction_order_date)->format('d/m/Y')
+            : $now->subMonths(2)->format('d/m/Y');
 
         return [
             'scheme_id'              => $scheme->id,
@@ -56,7 +63,7 @@ class Gfr12aService
             'financial_year'         => $financialYear,
             'instalment_number'      => $paymentRequest?->instalment_number ?: 1,
             'sanction_letter_no'     => $sanctionRef,
-            'sanction_date'          => $now->subMonths(2)->format('d/m/Y'),
+            'sanction_date'          => $sanctionDate,
             'central_amount_cr'      => $centralShareCr,
             'state_amount_cr'        => $stateShareCr,
             'total_amount_cr'        => $totalAvailableCr,

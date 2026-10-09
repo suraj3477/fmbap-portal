@@ -100,9 +100,14 @@ class MisAnalyticsController extends Controller
         }, 0);
         $totalStateShareCr = max(0, $totalSanctionedCr - $totalCentralShareCr);
 
-        // Released funds from approved payment requests
+        // Released funds from approved payment requests (using actually sanctioned amount)
         $approvedRequests = PaymentRequest::where('status', PaymentRequest::STATUS_APPROVED)->get();
-        $totalReleasedCr = (float) $approvedRequests->sum('requested_amount_cr');
+        $totalReleasedCr = (float) $approvedRequests->sum(function($r) {
+            return $r->approved_amount_cr !== null ? (float)$r->approved_amount_cr : (float)$r->requested_amount_cr;
+        });
+        $totalCurtailmentCr = (float) $approvedRequests->sum(function($r) {
+            return (float)($r->deduction_amount_cr ?? 0);
+        });
 
         // Fallback for legacy seeded projects
         if ($totalReleasedCr <= 0) {
@@ -131,7 +136,12 @@ class MisAnalyticsController extends Controller
                 return $acc + ((float) $s->sanctioned_amount_cr * ($pct / 100));
             }, 0);
 
-            $stApprovedReqs = PaymentRequest::where('state', $st)->where('status', PaymentRequest::STATUS_APPROVED)->sum('requested_amount_cr');
+            $stApprovedReqs = (float) PaymentRequest::where('state', $st)
+                ->where('status', PaymentRequest::STATUS_APPROVED)
+                ->get()
+                ->sum(function($r) {
+                    return $r->approved_amount_cr !== null ? (float)$r->approved_amount_cr : (float)$r->requested_amount_cr;
+                });
             if ($stApprovedReqs <= 0) {
                 $stApprovedReqs = (float) \App\Models\FmbapProject::where('state', $st)->sum('released_central_share_cr');
             }
@@ -249,6 +259,7 @@ class MisAnalyticsController extends Controller
                 'total_central_share_cr' => round($totalCentralShareCr, 2),
                 'total_state_share_cr'   => round($totalStateShareCr, 2),
                 'total_released_cr'      => round($totalReleasedCr, 2),
+                'total_curtailment_cr'   => round($totalCurtailmentCr, 2),
                 'disbursal_velocity_pct' => $disbursalVelocity,
                 'avg_physical_progress'  => $avgPhysicalProgress,
             ],

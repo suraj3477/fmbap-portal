@@ -6,6 +6,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import WizardStepIndicator from '@/Components/WizardStepIndicator.vue';
 import SchemeSearchDropdown from '@/Components/SchemeSearchDropdown.vue';
 import Gfr12aModal from '@/Components/Gfr12aModal.vue';
+import MojsSanctionLedgerCard from '@/Components/MojsSanctionLedgerCard.vue';
 
 const props = defineProps({
     paymentRequest: {
@@ -83,10 +84,16 @@ onMounted(() => {
     const cPct = scheme?.central_share_pct || 90;
     const sPct = scheme?.state_share_pct || (100 - cPct);
 
-    let costCr = proj?.estimated_cost_cr || scheme?.sanctioned_amount_cr || '';
+    let costCr = scheme?.sanctioned_amount_cr || proj?.estimated_cost_cr || '';
     if (!costCr && scheme?.estimated_cost_lakh) {
         costCr = (parseFloat(scheme.estimated_cost_lakh) / 100).toFixed(2);
     }
+
+    const relCentral = scheme?.approved_claims_release_cr 
+        ? parseFloat(scheme.approved_claims_release_cr).toFixed(2)
+        : (scheme?.released_central_share_cr || proj?.released_central_share_cr || '0.00');
+    const relState = (cPct > 0) ? ((parseFloat(relCentral) * (sPct / cPct)).toFixed(2)) : '0.00';
+    const balCentral = scheme?.balance_central_share_cr || proj?.balance_central_share_cr || '';
 
     form.value = {
         payment_request_id: props.paymentRequest.id,
@@ -101,12 +108,12 @@ onMounted(() => {
         // FMBAP Financial Tracking
         estimated_cost_cr: costCr,
         executed_amount_cr: proj?.executed_amount_cr || '',
-        funding_pattern: proj?.funding_pattern || `${cPct}/${sPct}`,
-        central_share_cr: proj?.central_share_cr || '',
-        state_share_cr: proj?.state_share_cr || '',
-        released_central_share_cr: proj?.released_central_share_cr || '0.00',
-        released_state_share_cr: proj?.released_state_share_cr || '0.00',
-        balance_central_share_cr: proj?.balance_central_share_cr || '',
+        funding_pattern: scheme?.funding_pattern || proj?.funding_pattern || `${cPct}/${sPct}`,
+        central_share_cr: scheme?.central_share_entitlement_cr || proj?.central_share_cr || '',
+        state_share_cr: scheme?.state_share_entitlement_cr || proj?.state_share_cr || '',
+        released_central_share_cr: relCentral,
+        released_state_share_cr: relState,
+        balance_central_share_cr: balCentral,
         balance_state_share_cr: proj?.balance_state_share_cr || '',
         state_govt_doc: null,
         // Step 3
@@ -424,6 +431,13 @@ const saveStep = async (isFinalSubmit = false) => {
                             </div>
                         </div>
 
+                        <!-- MoJS Sanction Audit Ledger & Release Standing (Above Section 2) -->
+                        <MojsSanctionLedgerCard 
+                            :scheme="form.scheme_obj" 
+                            :current-requested-cr="form.requested_amount_cr"
+                            :current-instalment="form.instalment_number"
+                        />
+
                         <!-- 2. CURRENT PAYMENT CLAIM (THE ACTIVE REQUEST) -->
                         <div class="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 p-5 rounded-2xl border border-indigo-200 space-y-4">
                             <div class="flex items-center justify-between border-b border-indigo-200/80 pb-2">
@@ -439,15 +453,23 @@ const saveStep = async (isFinalSubmit = false) => {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <!-- Requested Amount -->
                                 <div>
-                                    <label class="block text-sm font-bold text-gray-800 mb-1">
-                                        Requested Central Assistance (₹ Cr) <span class="text-red-500">*</span>
-                                    </label>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="block text-sm font-bold text-gray-800">
+                                            Requested Central Assistance (₹ Cr) <span class="text-red-500">*</span>
+                                        </label>
+                                        <span v-if="form.balance_central_share_cr" class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                                            Permissible Balance: ₹{{ form.balance_central_share_cr }} Cr
+                                        </span>
+                                    </div>
                                     <div class="relative">
                                         <input 
                                             type="number" 
                                             step="0.01" 
                                             v-model="form.requested_amount_cr" 
-                                            class="w-full rounded-xl border-gray-300 pr-24 text-base font-extrabold text-blue-950 focus:ring-blue-500 focus:border-blue-500" 
+                                            :class="[
+                                                'w-full rounded-xl pr-24 text-base font-extrabold text-blue-950 focus:ring-blue-500 focus:border-blue-500',
+                                                isOverclaimWarning ? 'border-red-400 bg-red-50/30' : 'border-gray-300'
+                                            ]"
                                             required 
                                             placeholder="e.g. 0.54"
                                         >
@@ -456,10 +478,16 @@ const saveStep = async (isFinalSubmit = false) => {
                                         </div>
                                     </div>
 
-                                    <!-- Live Lakh Conversion -->
-                                    <div v-if="form.requested_amount_cr" class="mt-2">
+                                    <!-- Live Lakh Conversion & Alerts -->
+                                    <div v-if="form.requested_amount_cr" class="mt-2 flex items-center gap-2 flex-wrap">
                                         <span class="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs inline-block">
                                             = ₹{{ (parseFloat(form.requested_amount_cr || 0) * 100).toFixed(2) }} Lakh
+                                        </span>
+                                        <span v-if="!isOverclaimWarning && form.balance_central_share_cr" class="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md inline-block">
+                                            ✓ Permissible Ceiling Available
+                                        </span>
+                                        <span v-else-if="isOverclaimWarning" class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md inline-block">
+                                            ⚠️ Exceeds Balance by ₹{{ (parseFloat(form.requested_amount_cr) - parseFloat(form.balance_central_share_cr)).toFixed(2) }} Cr
                                         </span>
                                     </div>
                                 </div>

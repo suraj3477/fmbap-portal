@@ -18,6 +18,8 @@ class BbMonitoringReport extends Model
         'bb_physical_progress_description',
         'bb_financial_progress_pct',
         'bb_financial_progress_description',
+        'bb_recommended_amount_cr',
+        'bb_recommendation_justification',
         'bb_report_doc_path',
         'geo_tagged_files',
         'status',
@@ -33,6 +35,7 @@ class BbMonitoringReport extends Model
             'submitted_at'                => 'datetime',
             'bb_physical_progress_pct'    => 'decimal:2',
             'bb_financial_progress_pct'   => 'decimal:2',
+            'bb_recommended_amount_cr'    => 'decimal:2',
         ];
     }
 

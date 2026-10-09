@@ -6,6 +6,7 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import WizardStepIndicator from '@/Components/WizardStepIndicator.vue';
 import SchemeSearchDropdown from '@/Components/SchemeSearchDropdown.vue';
 import Gfr12aModal from '@/Components/Gfr12aModal.vue';
+import MojsSanctionLedgerCard from '@/Components/MojsSanctionLedgerCard.vue';
 
 const props = defineProps({
     userRole: String,
@@ -108,54 +109,68 @@ const onSchemeSelected = (scheme) => {
     form.value.estimated_cost_cr = costCr > 0 ? costCr.toFixed(2) : '';
 
     // 3. Central & State Share
-    const centralCr = costCr > 0 ? costCr * (cPct / 100) : 0;
-    const stateCr = costCr > 0 ? costCr * (sPct / 100) : 0;
+    const centralCr = scheme.central_share_entitlement_cr !== undefined 
+        ? parseFloat(scheme.central_share_entitlement_cr) 
+        : (costCr > 0 ? costCr * (cPct / 100) : 0);
+    const stateCr = scheme.state_share_entitlement_cr !== undefined 
+        ? parseFloat(scheme.state_share_entitlement_cr) 
+        : (costCr > 0 ? costCr * (sPct / 100) : 0);
     form.value.central_share_cr = centralCr > 0 ? centralCr.toFixed(2) : '';
     form.value.state_share_cr = stateCr > 0 ? stateCr.toFixed(2) : '';
 
-    // 4. Cumulative Prior Releases from Excel / Project
-    const proj = scheme.fmbap_project || scheme.fmbapProject;
+    // 4. Cumulative Prior Releases from MoJS approved claims OR master data
     let relCentral = 0;
     let relState = 0;
 
-    if (proj && (proj.released_central_share_cr || proj.released_state_share_cr)) {
-        relCentral = parseFloat(proj.released_central_share_cr) || 0;
-        relState = parseFloat(proj.released_state_share_cr) || 0;
-    } else if (scheme.fund_utilised_cs_lakh || scheme.fund_utilised_ss_lakh) {
-        relCentral = (parseFloat(scheme.fund_utilised_cs_lakh) || 0) / 100;
-        relState = (parseFloat(scheme.fund_utilised_ss_lakh) || 0) / 100;
-    } else if (scheme.fund_utilised_total_lakh && parseFloat(scheme.fund_utilised_total_lakh) > 0) {
-        const totalLakh = parseFloat(scheme.fund_utilised_total_lakh);
-        relCentral = (totalLakh * (cPct / 100)) / 100;
-        relState = (totalLakh * (sPct / 100)) / 100;
+    if (scheme.approved_claims_release_cr !== undefined && parseFloat(scheme.approved_claims_release_cr) > 0) {
+        relCentral = parseFloat(scheme.approved_claims_release_cr);
+        relState = (cPct > 0) ? (relCentral * (sPct / cPct)) : 0;
+    } else if (scheme.released_central_share_cr !== undefined && parseFloat(scheme.released_central_share_cr) > 0) {
+        relCentral = parseFloat(scheme.released_central_share_cr);
+        relState = (cPct > 0) ? (relCentral * (sPct / cPct)) : 0;
+    } else {
+        const proj = scheme.fmbap_project || scheme.fmbapProject;
+        if (proj && (proj.released_central_share_cr || proj.released_state_share_cr)) {
+            relCentral = parseFloat(proj.released_central_share_cr) || 0;
+            relState = parseFloat(proj.released_state_share_cr) || 0;
+        } else if (scheme.fund_utilised_cs_lakh || scheme.fund_utilised_ss_lakh) {
+            relCentral = (parseFloat(scheme.fund_utilised_cs_lakh) || 0) / 100;
+            relState = (parseFloat(scheme.fund_utilised_ss_lakh) || 0) / 100;
+        } else if (scheme.fund_utilised_total_lakh && parseFloat(scheme.fund_utilised_total_lakh) > 0) {
+            const totalLakh = parseFloat(scheme.fund_utilised_total_lakh);
+            relCentral = (totalLakh * (cPct / 100)) / 100;
+            relState = (totalLakh * (sPct / 100)) / 100;
+        }
     }
 
     form.value.released_central_share_cr = relCentral > 0 ? relCentral.toFixed(2) : '0.00';
     form.value.released_state_share_cr = relState > 0 ? relState.toFixed(2) : '0.00';
 
     // 5. Calculate Balances
-    const balCentral = Math.max(0, centralCr - relCentral);
+    const balCentral = scheme.balance_central_share_cr !== undefined 
+        ? parseFloat(scheme.balance_central_share_cr) 
+        : Math.max(0, centralCr - relCentral);
     const balState = Math.max(0, stateCr - relState);
     form.value.balance_central_share_cr = balCentral > 0 ? balCentral.toFixed(2) : '0.00';
     form.value.balance_state_share_cr = balState > 0 ? balState.toFixed(2) : '0.00';
 
-    // 6. Intelligent Claim Suggester
-    if (scheme.fund_req_cs_lakh && parseFloat(scheme.fund_req_cs_lakh) > 0) {
-        form.value.requested_amount_cr = (parseFloat(scheme.fund_req_cs_lakh) / 100).toFixed(2);
-    } else if (balCentral > 0) {
-        form.value.requested_amount_cr = balCentral.toFixed(2);
-    } else {
-        form.value.requested_amount_cr = '';
-    }
-
-    // 7. Suggest Instalment Number
-    if (relCentral > 0) {
+    // 6. Intelligent Instalment & Claim Suggester
+    if (scheme.next_suggested_instalment) {
+        form.value.instalment_number = scheme.next_suggested_instalment;
+    } else if (relCentral > 0) {
         form.value.instalment_number = 2;
     } else {
         form.value.instalment_number = 1;
     }
 
-    // 8. Remarks pre-population
+    if (scheme.fund_req_cs_lakh && parseFloat(scheme.fund_req_cs_lakh) > 0) {
+        form.value.requested_amount_cr = (parseFloat(scheme.fund_req_cs_lakh) / 100).toFixed(2);
+    } else if (balCentral > 0 && !form.value.requested_amount_cr) {
+        form.value.requested_amount_cr = '';
+    }
+
+    // 7. Remarks pre-population
+    const proj = scheme.fmbap_project || scheme.fmbapProject;
     if (proj?.remarks) {
         form.value.state_remarks = proj.remarks;
     } else if (scheme.metadata?.remarks) {
@@ -574,6 +589,13 @@ const saveStep = async (isFinalSubmit = false) => {
                             </div>
                         </div>
 
+                        <!-- MoJS Sanction Audit Ledger & Release Standing (Above Section 2) -->
+                        <MojsSanctionLedgerCard 
+                            :scheme="form.selected_scheme" 
+                            :current-requested-cr="form.requested_amount_cr"
+                            :current-instalment="form.instalment_number"
+                        />
+
                         <!-- 2. CURRENT PAYMENT CLAIM (THE ACTIVE REQUEST) -->
                         <div class="bg-gradient-to-br from-indigo-50/50 to-blue-50/50 p-5 rounded-2xl border border-indigo-200 space-y-4">
                             <div class="flex items-center justify-between border-b border-indigo-200/80 pb-2">
@@ -589,15 +611,23 @@ const saveStep = async (isFinalSubmit = false) => {
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <!-- Requested Amount -->
                                 <div>
-                                    <label class="block text-sm font-bold text-gray-800 mb-1">
-                                        Requested Central Assistance (₹ Cr) <span class="text-red-500">*</span>
-                                    </label>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="block text-sm font-bold text-gray-800">
+                                            Requested Central Assistance (₹ Cr) <span class="text-red-500">*</span>
+                                        </label>
+                                        <span v-if="form.balance_central_share_cr" class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                                            Permissible Balance: ₹{{ form.balance_central_share_cr }} Cr
+                                        </span>
+                                    </div>
                                     <div class="relative">
                                         <input 
                                             type="number" 
                                             step="0.01" 
                                             v-model="form.requested_amount_cr" 
-                                            class="w-full rounded-xl border-gray-300 pr-24 text-base font-extrabold text-blue-950 focus:ring-blue-500 focus:border-blue-500" 
+                                            :class="[
+                                                'w-full rounded-xl pr-24 text-base font-extrabold text-blue-950 focus:ring-blue-500 focus:border-blue-500',
+                                                isOverclaimWarning ? 'border-red-400 bg-red-50/30' : 'border-gray-300'
+                                            ]"
                                             required 
                                             placeholder="e.g. 0.54"
                                         >
@@ -606,10 +636,16 @@ const saveStep = async (isFinalSubmit = false) => {
                                         </div>
                                     </div>
 
-                                    <!-- Live Lakh Conversion -->
-                                    <div v-if="form.requested_amount_cr" class="mt-2">
+                                    <!-- Live Lakh Conversion & Alerts -->
+                                    <div v-if="form.requested_amount_cr" class="mt-2 flex items-center gap-2 flex-wrap">
                                         <span class="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs inline-block">
                                             = ₹{{ (parseFloat(form.requested_amount_cr || 0) * 100).toFixed(2) }} Lakh
+                                        </span>
+                                        <span v-if="!isOverclaimWarning && form.balance_central_share_cr" class="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md inline-block">
+                                            ✓ Permissible Ceiling Available
+                                        </span>
+                                        <span v-else-if="isOverclaimWarning" class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md inline-block">
+                                            ⚠️ Exceeds Balance by ₹{{ (parseFloat(form.requested_amount_cr) - parseFloat(form.balance_central_share_cr)).toFixed(2) }} Cr
                                         </span>
                                     </div>
                                 </div>

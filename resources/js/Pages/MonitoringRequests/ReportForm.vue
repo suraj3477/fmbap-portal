@@ -33,7 +33,16 @@ const form = ref({
     bb_physical_progress_description: '',
     bb_financial_progress_pct: '',
     bb_financial_progress_description: '',
+    bb_recommended_amount_cr: props.paymentRequest?.bb_recommended_amount_cr ?? props.paymentRequest?.requested_amount_cr ?? '',
+    bb_recommendation_justification: '',
     bb_report_doc: null,
+});
+
+const recommendedDiff = computed(() => {
+    const asked = parseFloat(props.paymentRequest?.requested_amount_cr) || 0;
+    const rec = parseFloat(form.value.bb_recommended_amount_cr);
+    if (isNaN(rec)) return 0;
+    return (asked - rec).toFixed(2);
 });
 
 onMounted(() => {
@@ -45,6 +54,8 @@ onMounted(() => {
             bb_physical_progress_description: props.report.bb_physical_progress_description || '',
             bb_financial_progress_pct: props.report.bb_financial_progress_pct || '',
             bb_financial_progress_description: props.report.bb_financial_progress_description || '',
+            bb_recommended_amount_cr: props.report.bb_recommended_amount_cr ?? props.paymentRequest?.bb_recommended_amount_cr ?? props.paymentRequest?.requested_amount_cr ?? '',
+            bb_recommendation_justification: props.report.bb_recommendation_justification || '',
             bb_report_doc: null,
         };
     }
@@ -396,9 +407,78 @@ const isSubmitted = computed(() => ['FORWARDED_TO_MOJS', 'APPROVED', 'REJECTED']
                             </div>
                         </div>
 
-                        <!-- Section 3: Evidence -->
+                        <!-- Section 3: Central Assistance Scrutiny & Recommendation -->
+                        <div class="bg-gradient-to-br from-indigo-50/70 to-blue-50/70 border-2 border-indigo-200 p-6 rounded-2xl space-y-4">
+                            <div class="flex items-center justify-between flex-wrap gap-2 border-b border-indigo-200/80 pb-3">
+                                <div>
+                                    <h4 class="text-base font-black text-indigo-950 flex items-center gap-2">
+                                        <span class="p-1.5 bg-indigo-600 text-white rounded-lg text-xs">⚖️</span>
+                                        3. Central Assistance Claim Scrutiny &amp; Recommended Release
+                                    </h4>
+                                    <p class="text-xs text-indigo-700 mt-0.5">
+                                        Evaluate claimed bills and recommend realistic release amount based on physical site audit.
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[11px] font-bold text-slate-500 uppercase block">State Claimed Amount</span>
+                                    <span class="text-sm font-black text-blue-900 bg-white px-2.5 py-1 rounded-md border border-blue-200">
+                                        ₹{{ paymentRequest.requested_amount_cr || '0.00' }} Cr
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-800 mb-1">
+                                        Brahmaputra Board Recommended Central Release (₹ in Cr)
+                                        <span class="text-indigo-600 font-normal text-xs">(Editable)</span>
+                                    </label>
+                                    <div class="relative">
+                                        <input 
+                                            type="number" 
+                                            step="0.01" 
+                                            min="0" 
+                                            :max="paymentRequest.requested_amount_cr || 9999"
+                                            v-model="form.bb_recommended_amount_cr" 
+                                            class="w-full rounded-xl border-slate-300 pr-20 text-base font-extrabold text-indigo-950 focus:ring-indigo-500 focus:border-indigo-500"
+                                            placeholder="e.g. 3.25"
+                                        >
+                                        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                                            <span class="text-xs font-bold text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded">₹ Crore</span>
+                                        </div>
+                                    </div>
+                                    <p class="text-[11px] text-slate-500 mt-1">
+                                        You may recommend less than the state claimed amount if site execution is incomplete or non-compliant.
+                                    </p>
+
+                                    <!-- Curtailment Warning / Notice -->
+                                    <div v-if="recommendedDiff > 0" class="mt-3 p-3 bg-amber-100/80 border border-amber-300 rounded-xl text-xs text-amber-900 font-semibold flex items-center gap-2">
+                                        <span>⚠️</span>
+                                        <span>Recommending <strong>₹{{ recommendedDiff }} Cr less</strong> than State claimed amount.</span>
+                                    </div>
+                                    <div v-else-if="form.bb_recommended_amount_cr && recommendedDiff == 0" class="mt-3 p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-xl text-xs text-emerald-800 font-semibold flex items-center gap-2">
+                                        <span>✅</span>
+                                        <span>Recommending full requested amount (₹{{ form.bb_recommended_amount_cr }} Cr).</span>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <label class="block text-sm font-bold text-slate-800 mb-1">
+                                        Recommendation Justification &amp; Scrutiny Rationale
+                                    </label>
+                                    <textarea 
+                                        v-model="form.bb_recommendation_justification" 
+                                        rows="4" 
+                                        class="w-full rounded-xl border-slate-300 text-xs text-slate-800 focus:ring-indigo-500 focus:border-indigo-500"
+                                        placeholder="Explain justification for recommended amount. E.g., 'Physical embankment works completed only up to 55%; vouchers for chainage 400-500m pending audit; recommending release of ₹3.25 Cr against ₹4.50 Cr claimed.'"
+                                    ></textarea>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Section 4: Evidence -->
                         <div>
-                            <h4 class="text-base font-bold text-indigo-900 border-b border-indigo-100 pb-2 mb-4">3. Evidence & Official Report</h4>
+                            <h4 class="text-base font-bold text-indigo-900 border-b border-indigo-100 pb-2 mb-4">4. Evidence & Official Report</h4>
                             
                             <!-- Existing Evidence -->
                             <div v-if="report?.geo_tagged_files?.length" class="mb-6">
@@ -447,9 +527,9 @@ const isSubmitted = computed(() => ['FORWARDED_TO_MOJS', 'APPROVED', 'REJECTED']
                             </div>
                         </div>
 
-                        <!-- Section 4: Decision & Official Remarks -->
+                        <!-- Section 5: Decision & Official Remarks -->
                         <div>
-                            <h4 class="text-base font-bold text-indigo-900 border-b border-indigo-100 pb-2 mb-4">4. BB Decision & Recommendation Remarks</h4>
+                            <h4 class="text-base font-bold text-indigo-900 border-b border-indigo-100 pb-2 mb-4">5. BB Decision &amp; Forwarding Remarks</h4>
                             <div>
                                 <label class="block text-sm font-semibold text-gray-700 mb-1">Remarks / Reason for Decision <span class="text-xs font-normal text-gray-500">(Will be visible to State and MoJS)</span></label>
                                 <textarea v-model="bbRemarks" rows="3" placeholder="Enter inspection summary, reasons for sending back for correction, or rejection remarks..." class="w-full rounded-md border-gray-300 text-sm"></textarea>

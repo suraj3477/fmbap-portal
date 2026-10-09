@@ -36,13 +36,35 @@ class PaymentRequestController extends Controller
             abort(403, 'Only State officials or Super Admins can initiate fund release claims.');
         }
 
+        $preselectedSchemeId = $request->query('scheme_id');
+
         $availableSchemes = Scheme::active()
-            ->with('fmbapProject')
+            ->with([
+                'fmbapProject',
+                'paymentRequests' => function ($q) {
+                    $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+                }
+            ])
             ->orderByDesc('id')
             ->take(50)
             ->get();
 
-        $preselectedSchemeId = $request->query('scheme_id');
+        if ($preselectedSchemeId && !$availableSchemes->contains('id', (int) $preselectedSchemeId)) {
+            $preScheme = Scheme::with([
+                'fmbapProject',
+                'paymentRequests' => function ($q) {
+                    $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+                }
+            ])->find($preselectedSchemeId);
+
+            if ($preScheme) {
+                $availableSchemes->prepend($preScheme);
+            }
+        }
+
+        $availableSchemes->each(function ($scheme) {
+            $scheme->enrichFinancialMetrics();
+        });
 
         return Inertia::render('FundRelease/Create', [
             'userRole'            => auth()->user()->role,
@@ -270,8 +292,20 @@ class PaymentRequestController extends Controller
             abort(403, 'Unauthorized.');
         }
 
+        $fund_release->load([
+            'scheme.fmbapProject',
+            'scheme.paymentRequests' => function ($q) {
+                $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+            },
+            'revisions'
+        ]);
+
+        if ($fund_release->scheme) {
+            $fund_release->scheme->enrichFinancialMetrics();
+        }
+
         return Inertia::render('FundRelease/Edit', [
-            'paymentRequest' => $fund_release->load(['scheme.fmbapProject', 'revisions']),
+            'paymentRequest' => $fund_release,
             'userRole'       => auth()->user()->role,
         ]);
     }
@@ -295,13 +329,18 @@ class PaymentRequestController extends Controller
         }
 
         $validated = $request->validate([
-            'decision' => 'required|in:FORWARDED_TO_MOJS,NEEDS_CORRECTION,REJECTED',
-            'remarks'  => 'required|string',
+            'decision'                 => 'required|in:FORWARDED_TO_MOJS,NEEDS_CORRECTION,REJECTED',
+            'remarks'                  => 'required|string',
+            'bb_recommended_amount_cr' => 'nullable|numeric|min:0',
         ]);
 
         $fund_release->bb_decision = $validated['decision'];
         $fund_release->bb_remarks  = $validated['remarks'];
         $fund_release->status      = $validated['decision'];
+
+        if (isset($validated['bb_recommended_amount_cr'])) {
+            $fund_release->bb_recommended_amount_cr = $validated['bb_recommended_amount_cr'];
+        }
 
         if ($validated['decision'] === 'FORWARDED_TO_MOJS') {
             $fund_release->forwarded_to_mojs_at = now();
@@ -316,7 +355,7 @@ class PaymentRequestController extends Controller
     }
 
     /**
-     * MoJS Final Decision
+     * MoJS Final Decision (Sanction & Release with Central Allocation / Curtailment)
      */
     public function mojsDecision(Request $request, PaymentRequest $fund_release)
     {
@@ -325,8 +364,13 @@ class PaymentRequestController extends Controller
         }
 
         $validated = $request->validate([
-            'decision' => 'required|in:APPROVED,NEEDS_CORRECTION,REJECTED',
-            'remarks'  => 'required|string',
+            'decision'             => 'required|in:APPROVED,NEEDS_CORRECTION,REJECTED',
+            'remarks'              => 'required|string',
+            'approved_amount_cr'   => 'nullable|numeric|min:0',
+            'curtailment_reason'   => 'nullable|string',
+            'sanction_order_no'    => 'nullable|string',
+            'sanction_order_date'  => 'nullable|date',
+            'sanction_order_doc'   => 'nullable|file|mimes:pdf|max:204800',
         ]);
 
         $fund_release->mojs_decision = $validated['decision'];
@@ -335,6 +379,31 @@ class PaymentRequestController extends Controller
 
         if ($validated['decision'] === 'APPROVED') {
             $fund_release->approved_at = now();
+
+            $requested = (float) $fund_release->requested_amount_cr;
+            $approved = (isset($validated['approved_amount_cr']) && $validated['approved_amount_cr'] !== null && $validated['approved_amount_cr'] !== '')
+                ? (float) $validated['approved_amount_cr']
+                : $requested;
+
+            $fund_release->approved_amount_cr = $approved;
+            $deduction = max(0, round($requested - $approved, 2));
+            $fund_release->deduction_amount_cr = $deduction;
+
+            if ($deduction > 0) {
+                $fund_release->curtailment_reason = $validated['curtailment_reason'] ?? 'Central Allocation Curtailment / Deduction';
+            } else {
+                $fund_release->curtailment_reason = null;
+            }
+
+            if (!empty($validated['sanction_order_no'])) {
+                $fund_release->sanction_order_no = $validated['sanction_order_no'];
+            }
+            if (!empty($validated['sanction_order_date'])) {
+                $fund_release->sanction_order_date = $validated['sanction_order_date'];
+            }
+            if ($request->hasFile('sanction_order_doc')) {
+                $fund_release->sanction_order_doc_path = '/storage/' . $request->file('sanction_order_doc')->store('sanction_orders', 'public');
+            }
 
             // Automatically sync the scheme physical status & progress if claim is approved
             if ($fund_release->scheme && $fund_release->physical_progress_pct !== null) {
@@ -345,11 +414,32 @@ class PaymentRequestController extends Controller
                 }
                 $fund_release->scheme->update($schemeData);
             }
+
+            // Synchronize FmbapProject baseline tracking with actual central release amount
+            if ($fund_release->scheme) {
+                $fmbapProject = \App\Models\FmbapProject::where('scheme_code', $fund_release->scheme->scheme_code)->first();
+                if ($fmbapProject) {
+                    $currentReleased = (float) ($fmbapProject->released_central_share_cr ?? 0);
+                    $newReleased = round($currentReleased + $approved, 2);
+                    $fmbapProject->released_central_share_cr = $newReleased;
+
+                    $centralShare = (float) ($fmbapProject->central_share_cr ?? 0);
+                    if ($centralShare > 0) {
+                        $fmbapProject->balance_central_share_cr = max(0, round($centralShare - $newReleased, 2));
+                    }
+                    $fmbapProject->mojs_remarks = $validated['remarks'];
+                    $fmbapProject->save();
+                }
+            }
         }
 
         $fund_release->save();
 
-        $actionLabel = $validated['decision'] === 'NEEDS_CORRECTION' ? 'MoJS Sent Back for Correction' : 'MoJS Decision: ' . str_replace('_', ' ', $validated['decision']);
+        $actionLabel = $validated['decision'] === 'NEEDS_CORRECTION' 
+            ? 'MoJS Sent Back for Correction' 
+            : ($validated['decision'] === 'APPROVED' 
+                ? 'MoJS Sanctioned & Released (₹' . number_format($fund_release->approved_amount_cr, 2) . ' Cr)' 
+                : 'MoJS Decision: ' . str_replace('_', ' ', $validated['decision']));
         $fund_release->createRevisionSnapshot($actionLabel);
 
         return redirect()->back()->with('success', 'MoJS decision recorded.');

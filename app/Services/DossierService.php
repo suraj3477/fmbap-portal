@@ -44,6 +44,13 @@ class DossierService
             // ── Summary ────────────────────────────────────────────────────
             'summary' => [
                 'requested_amount_cr'      => $paymentRequest->requested_amount_cr,
+                'bb_recommended_amount_cr' => $paymentRequest->bb_recommended_amount_cr ?? $bbReport?->bb_recommended_amount_cr,
+                'approved_amount_cr'       => $paymentRequest->approved_amount_cr,
+                'deduction_amount_cr'      => $paymentRequest->deduction_amount_cr,
+                'curtailment_reason'       => $paymentRequest->curtailment_reason,
+                'sanction_order_no'        => $paymentRequest->sanction_order_no,
+                'sanction_order_date'      => $paymentRequest->sanction_order_date,
+                'sanction_order_doc_path'  => $paymentRequest->sanction_order_doc_path,
                 'physical_progress_pct'    => $paymentRequest->physical_progress_pct,
                 'financial_progress_pct'   => $paymentRequest->financial_progress_pct,
                 'bb_physical_pct'          => $bbReport?->bb_physical_progress_pct,

@@ -47,7 +47,9 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         $approvedRequests = (clone $userRequests)->where('status', \App\Models\PaymentRequest::STATUS_APPROVED)->get();
 
         $totalSanctioned = \App\Models\Scheme::sum('sanctioned_amount_cr');
-        $totalReleased = $approvedRequests->sum('requested_amount_cr');
+        $totalReleased = $approvedRequests->sum(function($r) {
+            return $r->approved_amount_cr !== null ? (float)$r->approved_amount_cr : (float)$r->requested_amount_cr;
+        });
 
         $totalSchemes = \App\Models\Scheme::count();
         $completedSchemes = \App\Models\Scheme::where('physical_status', 'Completed')->count();

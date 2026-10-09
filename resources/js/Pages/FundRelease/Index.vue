@@ -57,6 +57,13 @@ const totalAmountCr = computed(() => {
     return sum.toFixed(2);
 });
 
+const totalReleasedCr = computed(() => {
+    const sum = props.requests
+        .filter(r => r.status === 'APPROVED')
+        .reduce((acc, r) => acc + (parseFloat(r.approved_amount_cr !== null && r.approved_amount_cr !== undefined ? r.approved_amount_cr : r.requested_amount_cr) || 0), 0);
+    return sum.toFixed(2);
+});
+
 const approvedCount = computed(() => 
     props.requests.filter(r => r.status === 'APPROVED').length
 );
@@ -321,10 +328,11 @@ const exportToCsv = () => {
                     </div>
                     <div>
                         <div class="text-2xl sm:text-3xl font-black text-emerald-950 leading-tight">
-                            {{ approvedCount }} <span class="text-base font-bold text-slate-600">released</span>
+                            ₹{{ totalReleasedCr }} <span class="text-sm font-semibold text-slate-500">Cr</span>
                         </div>
-                        <div class="text-[11px] text-emerald-700 mt-1 font-medium">
-                            MoJS Formal Central Release Approved
+                        <div class="text-[11px] text-emerald-700 mt-1 flex items-center justify-between font-medium">
+                            <span>MoJS Central Disbursed</span>
+                            <span class="font-bold text-emerald-800">{{ approvedCount }} Claims</span>
                         </div>
                     </div>
                 </div>
@@ -572,12 +580,22 @@ const exportToCsv = () => {
                                     {{ formatDate(req.submitted_at || req.created_at) }}
                                 </td>
 
-                                <!-- Claimed Amount -->
+                                <!-- Claimed & Sanctioned Amount -->
                                 <td class="py-2.5 px-3 text-right font-mono">
                                     <div class="font-black text-slate-900 text-xs">
                                         ₹{{ parseFloat(req.requested_amount_cr || 0).toFixed(2) }} Cr
                                     </div>
-                                    <div class="text-[10px] text-slate-500">
+                                    <div v-if="req.status === 'APPROVED'" class="mt-0.5">
+                                        <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap">
+                                            Sanctioned: ₹{{ parseFloat(req.approved_amount_cr || req.requested_amount_cr).toFixed(2) }} Cr
+                                        </span>
+                                    </div>
+                                    <div v-else-if="req.bb_recommended_amount_cr" class="mt-0.5">
+                                        <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap">
+                                            BB Rec: ₹{{ parseFloat(req.bb_recommended_amount_cr).toFixed(2) }} Cr
+                                        </span>
+                                    </div>
+                                    <div v-else class="text-[10px] text-slate-500">
                                         (₹{{ (parseFloat(req.requested_amount_cr || 0) * 100).toFixed(0) }} L)
                                     </div>
                                 </td>

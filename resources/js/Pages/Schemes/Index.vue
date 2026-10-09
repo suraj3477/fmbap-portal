@@ -10,7 +10,7 @@ const props = defineProps({
         type: Object,
         default: () => ({
             total: 0, completed: 0, ongoing: 0,
-            total_sanctioned: '0.00', avg_progress: 0,
+            total_sanctioned: '0.00', total_released: '0.00', total_curtailed: '0.00', avg_progress: 0,
         }),
     },
 });
@@ -68,6 +68,16 @@ const totalCount = computed(() => props.schemes.length);
 
 const totalSanctionedCr = computed(() => {
     const sum = props.schemes.reduce((acc, s) => acc + (parseFloat(s.sanctioned_amount_cr) || 0), 0);
+    return sum.toFixed(2);
+});
+
+const totalReleasedCr = computed(() => {
+    const sum = props.schemes.reduce((acc, s) => acc + (parseFloat(s.released_central_share_cr) || 0), 0);
+    return sum.toFixed(2);
+});
+
+const totalCurtailedCr = computed(() => {
+    const sum = props.schemes.reduce((acc, s) => acc + (parseFloat(s.curtailed_amount_cr) || 0), 0);
     return sum.toFixed(2);
 });
 
@@ -199,6 +209,9 @@ const exportCSV = () => {
         'Date of Submission',
         'Sanctioned Cost (Cr)',
         'Central Share %',
+        'Central Released (Cr)',
+        'Curtailed Amount (Cr)',
+        'Balance Central Share (Cr)',
         'Physical Progress %',
         'Status',
         'Last Updated'
@@ -209,9 +222,12 @@ const exportCSV = () => {
         `"${(s.division || s.district || '').replace(/"/g, '""')}"`,
         `"${s.state || ''}"`,
         `"${s.river_basin || ''}"`,
-        `"${formatDate(s.created_at || s.submitted_at)}"` ,
+        `"${formatDate(s.created_at || s.submitted_at)}"`,
         `"${s.sanctioned_amount_cr || 0}"`,
         `"${s.fmbap_project?.funding_pattern ? s.fmbap_project.funding_pattern.split('/')[0] : (s.central_share_pct || 90)}"`,
+        `"${s.released_central_share_cr || 0}"`,
+        `"${s.curtailed_amount_cr || 0}"`,
+        `"${s.balance_central_share_cr || 0}"`,
         `"${s.physical_progress_pct || 0}"`,
         `"${s.physical_status || 'Ongoing'}"`,
         `"${formatDate(s.updated_at || s.created_at)}"`
@@ -414,9 +430,9 @@ const submitManualScheme = () => {
         <div class="w-full max-w-[1720px] mx-auto px-3 sm:px-6 py-5 space-y-5">
 
             <!-- ─── 1. EXECUTIVE METRIC CARDS ─── -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
                 <!-- Total Sanctioned Cost -->
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div class="bg-white p-4.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div class="flex items-center justify-between text-slate-500 mb-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-slate-600">Total Sanctioned Outlay</span>
                         <span class="p-1.5 bg-blue-50 text-[#0F4C9F] rounded-lg">₹ Cr</span>
@@ -432,8 +448,28 @@ const submitManualScheme = () => {
                     </div>
                 </div>
 
+                <!-- Central Assistance Released -->
+                <div class="bg-white p-4.5 rounded-xl border border-emerald-200 shadow-2xs flex flex-col justify-between relative overflow-hidden">
+                    <div class="flex items-center justify-between text-slate-500 mb-2">
+                        <span class="text-xs font-bold uppercase tracking-wider text-emerald-800">Central Funds Released</span>
+                        <span class="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">🏛️ ₹ Cr</span>
+                    </div>
+                    <div>
+                        <div class="text-2xl sm:text-3xl font-black text-emerald-950 leading-tight">
+                            ₹{{ totalReleasedCr }} <span class="text-sm font-semibold text-slate-500">Cr</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 mt-1 flex items-center justify-between font-medium">
+                            <span v-if="parseFloat(totalCurtailedCr) > 0" class="inline-flex items-center gap-1 text-amber-700 font-bold" :title="'Total central deductions: ₹' + totalCurtailedCr + ' Cr'">
+                                ⚠️ Deductions: -₹{{ totalCurtailedCr }} Cr
+                            </span>
+                            <span v-else class="text-emerald-700 font-medium">100% Full Sanctions</span>
+                            <span class="text-slate-400 font-semibold text-[10px]">MoJS Disbursed</span>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Ongoing Schemes (Active) -->
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div class="bg-white p-4.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div class="flex items-center justify-between text-slate-500 mb-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-amber-800">Ongoing Portfolio</span>
                         <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-200">
@@ -451,7 +487,7 @@ const submitManualScheme = () => {
                 </div>
 
                 <!-- Completed Schemes -->
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div class="bg-white p-4.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div class="flex items-center justify-between text-slate-500 mb-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-emerald-800">Delivered Schemes</span>
                         <span class="p-1.5 bg-emerald-50 text-emerald-700 rounded-lg">✓</span>
@@ -467,7 +503,7 @@ const submitManualScheme = () => {
                 </div>
 
                 <!-- Average Physical Progress -->
-                <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                <div class="bg-white p-4.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                     <div class="flex items-center justify-between text-slate-500 mb-2">
                         <span class="text-xs font-bold uppercase tracking-wider text-blue-800">Average Physical Progress</span>
                         <span class="text-xs font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded">% Metric</span>
@@ -594,16 +630,17 @@ const submitManualScheme = () => {
                         <thead>
                             <tr class="bg-[#0F4C9F] text-white font-bold uppercase tracking-wider text-[10px]">
                                 <th class="py-3 px-3 text-center w-10">#</th>
-                                <th class="py-3 px-3 min-w-[130px]">Scheme Code</th>
-                                <th class="py-3 px-3 min-w-[240px]">Project Name</th>
-                                <th class="py-3 px-3 min-w-[130px]">Division Name</th>
-                                <th class="py-3 px-3 min-w-[130px]">State &amp; River Basin</th>
-                                <th class="py-3 px-3 text-center min-w-[120px]">Date of Submission</th>
+                                <th class="py-3 px-3 min-w-[125px]">Scheme Code</th>
+                                <th class="py-3 px-3 min-w-[230px]">Project Name</th>
+                                <th class="py-3 px-3 min-w-[120px]">Division Name</th>
+                                <th class="py-3 px-3 min-w-[120px]">State &amp; River Basin</th>
+                                <th class="py-3 px-3 text-center min-w-[110px]">Date of Submission</th>
                                 <th class="py-3 px-3 text-right min-w-[110px]">Sanctioned Cost</th>
-                                <th class="py-3 px-3 text-center min-w-[100px]">Central Share</th>
-                                <th class="py-3 px-3 text-center min-w-[120px]">Physical Progress</th>
-                                <th class="py-3 px-3 text-center min-w-[80px]">Claims</th>
-                                <th class="py-3 px-3 text-center min-w-[150px]">Status &amp; Last Updated</th>
+                                <th class="py-3 px-3 text-center min-w-[95px]">Central Share</th>
+                                <th class="py-3 px-3 text-right min-w-[135px]">Central Released</th>
+                                <th class="py-3 px-3 text-center min-w-[115px]">Physical Progress</th>
+                                <th class="py-3 px-3 text-center min-w-[90px]">Claims</th>
+                                <th class="py-3 px-3 text-center min-w-[140px]">Status &amp; Last Updated</th>
                                 <th class="py-3 px-3 text-center min-w-[80px]">Actions</th>
                             </tr>
                         </thead>
@@ -677,6 +714,26 @@ const submitManualScheme = () => {
                                         </span>
                                     </td>
 
+                                    <!-- Central Released & Curtailment & Balance -->
+                                    <td class="py-2.5 px-3 text-right font-mono">
+                                        <div class="font-black text-emerald-900 text-xs">
+                                            ₹{{ scheme.released_central_share_cr ? parseFloat(scheme.released_central_share_cr).toFixed(2) : '0.00' }} Cr
+                                        </div>
+                                        <!-- MoJS Curtailment Badge -->
+                                        <div v-if="parseFloat(scheme.curtailed_amount_cr || 0) > 0" class="mt-0.5">
+                                            <span
+                                                class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300"
+                                                :title="'MoJS Curtailed: -₹' + parseFloat(scheme.curtailed_amount_cr).toFixed(2) + ' Cr | Reason: ' + (scheme.latest_curtailment_reason || 'Central Allocation Deduction')"
+                                            >
+                                                ⚠️ -₹{{ parseFloat(scheme.curtailed_amount_cr).toFixed(2) }} Cr Curtailed
+                                            </span>
+                                        </div>
+                                        <!-- Balance Central Share -->
+                                        <div class="text-[10px] text-slate-500 mt-0.5">
+                                            Bal: ₹{{ scheme.balance_central_share_cr !== undefined ? parseFloat(scheme.balance_central_share_cr).toFixed(2) : '—' }} Cr
+                                        </div>
+                                    </td>
+
                                     <!-- Physical Progress -->
                                     <td class="py-2.5 px-3 text-center">
                                         <div class="flex items-center justify-between text-[11px] font-bold text-slate-700 mb-1">
@@ -697,11 +754,20 @@ const submitManualScheme = () => {
                                         </div>
                                     </td>
 
-                                    <!-- Claims Count -->
+                                    <!-- Claims Count & Release Status -->
                                     <td class="py-2.5 px-3 text-center">
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
-                                            {{ scheme.payment_requests?.length || 0 }} Claims
-                                        </span>
+                                        <div class="inline-flex flex-col items-center gap-1">
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                                                {{ scheme.payment_requests?.length || 0 }} Claims
+                                            </span>
+                                            <span
+                                                v-if="parseFloat(scheme.approved_claims_release_cr || scheme.released_central_share_cr || 0) > 0"
+                                                class="px-1.5 py-0.5 rounded text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 whitespace-nowrap inline-flex items-center gap-0.5"
+                                                title="Central Assistance released by MoJS"
+                                            >
+                                                <span>✓ ₹{{ parseFloat(scheme.approved_claims_release_cr || scheme.released_central_share_cr).toFixed(2) }} Cr</span>
+                                            </span>
+                                        </div>
                                     </td>
 
                                     <!-- Status & Last Updated By with Date -->
@@ -733,7 +799,7 @@ const submitManualScheme = () => {
 
                                 <!-- Expanded Row Drawer: Dossier & Quick Actions -->
                                 <tr v-if="expandedSchemeId === scheme.id" class="bg-blue-50/40 border-b border-blue-200">
-                                    <td colspan="12" class="p-4 sm:p-5">
+                                    <td colspan="13" class="p-4 sm:p-5">
                                         <div class="bg-white p-4 rounded-xl border border-blue-200 shadow-sm space-y-4">
                                             <div class="flex items-center justify-between border-b border-slate-200 pb-3">
                                                 <div>
@@ -755,7 +821,7 @@ const submitManualScheme = () => {
                                             </div>
 
                                             <!-- Grid Details -->
-                                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                                            <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 text-xs">
                                                 <div class="bg-slate-50 p-2.5 rounded-lg border border-slate-200">
                                                     <span class="text-[10px] text-slate-500 font-bold uppercase block">Division / District</span>
                                                     <strong class="text-slate-800">{{ scheme.division || scheme.district || 'Assam Division' }}</strong>
@@ -772,7 +838,43 @@ const submitManualScheme = () => {
                                                     <span class="text-[10px] text-slate-500 font-bold uppercase block">State Matching Share</span>
                                                     <strong class="text-slate-900">₹{{ (parseFloat(scheme.sanctioned_amount_cr || 0) * (scheme.fmbap_project?.funding_pattern ? parseFloat(scheme.fmbap_project.funding_pattern.split('/')[1]) : (scheme.state_share_pct || 10)) / 100).toFixed(2) }} Cr</strong>
                                                 </div>
-                                                <div v-if="scheme.metadata?.bb_verified_progress_pct" class="bg-blue-50 p-2.5 rounded-lg border border-blue-200 col-span-2 sm:col-span-4 flex items-center justify-between">
+                                                <div class="bg-emerald-50 p-2.5 rounded-lg border border-emerald-200">
+                                                    <span class="text-[10px] text-emerald-800 font-bold uppercase block">Central Funds Released</span>
+                                                    <strong class="text-emerald-950 font-black">₹{{ scheme.released_central_share_cr ? parseFloat(scheme.released_central_share_cr).toFixed(2) : '0.00' }} Cr</strong>
+                                                </div>
+                                                <div class="bg-blue-50 p-2.5 rounded-lg border border-blue-200">
+                                                    <span class="text-[10px] text-blue-800 font-bold uppercase block">Balance Central Share</span>
+                                                    <strong class="text-blue-950 font-bold">₹{{ scheme.balance_central_share_cr !== undefined ? parseFloat(scheme.balance_central_share_cr).toFixed(2) : '0.00' }} Cr</strong>
+                                                </div>
+
+                                                <!-- Curtailment Alert Card if deductions occurred -->
+                                                <div v-if="parseFloat(scheme.curtailed_amount_cr || 0) > 0" class="bg-amber-50 p-2.5 rounded-lg border border-amber-300 col-span-2 sm:col-span-4 lg:col-span-6 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                    <div class="flex items-center gap-2">
+                                                        <span class="text-base">⚠️</span>
+                                                        <div>
+                                                            <div class="font-bold text-xs text-amber-950">
+                                                                Central Allocation Curtailment: <span class="font-black text-rose-700">-₹{{ parseFloat(scheme.curtailed_amount_cr).toFixed(2) }} Cr</span>
+                                                            </div>
+                                                            <div class="text-[11px] text-amber-800">
+                                                                Curtailment Justification: <strong>{{ scheme.latest_curtailment_reason || 'Field Inspection / Technical Compliance Shortfall' }}</strong>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div v-if="scheme.latest_sanction_order_no" class="flex items-center gap-2 text-[11px] font-mono text-slate-700 shrink-0">
+                                                        <span class="font-bold">Order: {{ scheme.latest_sanction_order_no }}</span>
+                                                        <a
+                                                            v-if="scheme.latest_sanction_order_doc_path"
+                                                            :href="scheme.latest_sanction_order_doc_path"
+                                                            target="_blank"
+                                                            class="px-2 py-0.5 bg-white hover:bg-amber-100 text-[#0F4C9F] font-sans font-bold rounded border border-amber-300 shadow-2xs transition"
+                                                        >
+                                                            View Order PDF &rarr;
+                                                        </a>
+                                                    </div>
+                                                </div>
+
+                                                <!-- BB Verified Progress Card -->
+                                                <div v-if="scheme.metadata?.bb_verified_progress_pct" class="bg-blue-50 p-2.5 rounded-lg border border-blue-200 col-span-2 sm:col-span-4 lg:col-span-6 flex items-center justify-between">
                                                     <div class="flex items-center gap-2">
                                                         <span class="text-lg">🛡️</span>
                                                         <div>
@@ -792,37 +894,98 @@ const submitManualScheme = () => {
                                             <!-- Payment Requests on this Scheme -->
                                             <div v-if="scheme.payment_requests && scheme.payment_requests.length > 0" class="border-t border-slate-100 pt-3">
                                                 <span class="text-xs font-bold text-slate-700 block mb-2">Claim &amp; Release History ({{ scheme.payment_requests.length }} entries):</span>
-                                                <div class="space-y-1.5">
+                                                <div class="space-y-2">
                                                     <div
                                                         v-for="pr in scheme.payment_requests"
                                                         :key="pr.id"
-                                                        class="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-200 text-xs"
+                                                        class="p-3 rounded-lg border text-xs transition"
+                                                        :class="pr.status === 'APPROVED' ? 'bg-emerald-50/40 border-emerald-200' : (pr.status === 'NEEDS_CORRECTION' ? 'bg-amber-50/50 border-amber-300' : 'bg-slate-50 border-slate-200')"
                                                     >
-                                                        <div class="flex items-center gap-2">
-                                                            <span class="font-mono font-bold text-blue-900">#CLAIM-{{ pr.id }}</span>
-                                                            <span class="text-slate-600">Instalment {{ pr.instalment_number || 1 }}</span>
-                                                            <span class="font-bold text-slate-900">₹{{ pr.requested_amount_cr }} Cr</span>
-                                                            <span v-if="pr.bb_monitoring_report?.bb_physical_progress_pct" class="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-300">
-                                                                🛡️ BB Progress: {{ pr.bb_monitoring_report.bb_physical_progress_pct }}%
-                                                            </span>
+                                                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                                            <div class="flex items-center gap-2 flex-wrap">
+                                                                <span class="font-mono font-bold text-blue-950 bg-blue-100 px-2 py-0.5 rounded text-[11px]">
+                                                                    #CLAIM-{{ pr.id }}
+                                                                </span>
+                                                                <span class="text-slate-700 font-semibold text-[11px]">
+                                                                    Instalment {{ pr.instalment_number || 1 }}
+                                                                </span>
+                                                                <span class="text-slate-600 font-mono text-[11px]">
+                                                                    Claimed: <strong class="text-slate-900">₹{{ pr.requested_amount_cr }} Cr</strong>
+                                                                </span>
+
+                                                                <!-- Approved Release Pill -->
+                                                                <span
+                                                                    v-if="pr.status === 'APPROVED'"
+                                                                    class="px-2 py-0.5 rounded text-[11px] font-black bg-emerald-600 text-white shadow-2xs inline-flex items-center gap-1"
+                                                                >
+                                                                    <span>✓ Sanctioned &amp; Released:</span>
+                                                                    <span>₹{{ pr.approved_amount_cr || pr.requested_amount_cr }} Cr</span>
+                                                                </span>
+
+                                                                <!-- Curtailment / Deduction Pill -->
+                                                                <span
+                                                                    v-if="parseFloat(pr.deduction_amount_cr || 0) > 0"
+                                                                    class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-1"
+                                                                    :title="pr.curtailment_reason || 'Central Allocation Deduction'"
+                                                                >
+                                                                    <span>⚠️ Curtailment: -₹{{ pr.deduction_amount_cr }} Cr</span>
+                                                                </span>
+
+                                                                <span v-if="pr.bb_monitoring_report?.bb_physical_progress_pct" class="text-[10px] font-bold px-2 py-0.5 rounded bg-blue-50 text-blue-800 border border-blue-200">
+                                                                    🛡️ BB Progress: {{ pr.bb_monitoring_report.bb_physical_progress_pct }}%
+                                                                </span>
+                                                            </div>
+
+                                                            <div class="flex items-center gap-2 shrink-0">
+                                                                <span
+                                                                    :class="{
+                                                                        'bg-emerald-100 text-emerald-900 border-emerald-300': pr.status === 'APPROVED',
+                                                                        'bg-amber-100 text-amber-900 border-amber-300': pr.status === 'NEEDS_CORRECTION',
+                                                                        'bg-blue-100 text-blue-800 border-blue-200': pr.status !== 'APPROVED' && pr.status !== 'NEEDS_CORRECTION'
+                                                                    }"
+                                                                    class="text-[10px] font-bold px-2 py-0.5 rounded border uppercase"
+                                                                >
+                                                                    {{ pr.status }}
+                                                                </span>
+                                                                <Link
+                                                                    v-if="pr.status === 'NEEDS_CORRECTION' && ['state_official', 'state', 'super_admin'].includes(user?.role)"
+                                                                    :href="route('fund-release.edit', pr.id)"
+                                                                    class="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] transition inline-flex items-center gap-1"
+                                                                >
+                                                                    <span>✏️ Correct Claim</span>
+                                                                </Link>
+                                                                <Link :href="route('fund-release.show', pr.id)" class="text-[#0F4C9F] font-bold hover:underline inline-flex items-center gap-0.5">
+                                                                    <span>View Dossier</span>
+                                                                    <span>&rarr;</span>
+                                                                </Link>
+                                                            </div>
                                                         </div>
-                                                        <div class="flex items-center gap-2">
-                                                            <span
-                                                                :class="pr.status === 'NEEDS_CORRECTION' ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-blue-100 text-blue-800'"
-                                                                class="text-[10px] font-bold px-2 py-0.5 rounded border"
-                                                            >
-                                                                {{ pr.status }}
-                                                            </span>
-                                                            <Link
-                                                                v-if="pr.status === 'NEEDS_CORRECTION' && ['state_official', 'state', 'super_admin'].includes(user?.role)"
-                                                                :href="route('fund-release.edit', pr.id)"
-                                                                class="px-2 py-0.5 rounded bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10px] transition inline-flex items-center gap-1"
-                                                            >
-                                                                <span>✏️ Correct Claim</span>
-                                                            </Link>
-                                                            <Link :href="route('fund-release.show', pr.id)" class="text-[#0F4C9F] font-bold hover:underline">
-                                                                View Dossier &rarr;
-                                                            </Link>
+
+                                                        <!-- Curtailment Justification & Sanction Order Details -->
+                                                        <div v-if="pr.status === 'APPROVED' && (parseFloat(pr.deduction_amount_cr || 0) > 0 || pr.sanction_order_no)" class="mt-2 pt-2 border-t border-emerald-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                                                            <div v-if="parseFloat(pr.deduction_amount_cr || 0) > 0" class="text-amber-900 font-medium">
+                                                                <strong class="font-bold text-amber-950">MoJS Curtailment Reason:</strong>
+                                                                <span class="italic ml-1">{{ pr.curtailment_reason || 'Field Inspection / Physical Progress Shortfall' }}</span>
+                                                            </div>
+                                                            <div v-if="pr.sanction_order_no" class="flex items-center gap-3 font-mono text-slate-700 shrink-0">
+                                                                <div>
+                                                                    <span class="text-slate-500 font-sans text-[10px] uppercase font-bold">Sanction Order:</span>
+                                                                    <span class="font-bold text-slate-900 ml-1">{{ pr.sanction_order_no }}</span>
+                                                                    <span v-if="pr.sanction_order_date" class="text-slate-500 font-sans text-[10px] ml-1">({{ formatDate(pr.sanction_order_date) }})</span>
+                                                                </div>
+                                                                <a
+                                                                    v-if="pr.sanction_order_doc_path"
+                                                                    :href="pr.sanction_order_doc_path"
+                                                                    target="_blank"
+                                                                    class="inline-flex items-center gap-1 px-2 py-0.5 bg-white hover:bg-blue-50 text-[#0F4C9F] font-sans font-bold text-[10px] rounded border border-blue-200 transition"
+                                                                    title="Download MoJS Sanction Order PDF"
+                                                                >
+                                                                    <svg class="w-3 h-3 text-[#0F4C9F]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                                                                    </svg>
+                                                                    <span>Download Sanction Order</span>
+                                                                </a>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -834,7 +997,7 @@ const submitManualScheme = () => {
 
                             <!-- Empty Row -->
                             <tr v-if="paginatedSchemes.length === 0">
-                                <td colspan="12" class="p-8 text-center text-slate-500 italic">
+                                <td colspan="13" class="p-8 text-center text-slate-500 italic">
                                     No schemes match your selected search or filter criteria.
                                 </td>
                             </tr>

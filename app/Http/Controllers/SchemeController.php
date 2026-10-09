@@ -24,20 +24,17 @@ class SchemeController extends Controller
         $user = auth()->user();
 
         $schemes = Scheme::with([
-            'paymentRequests' => function ($q) use ($user) {
-                if ($user->role === 'state_official') {
-                    $q->where('user_id', $user->id);
-                }
+            'paymentRequests' => function ($q) {
                 $q->with('bbMonitoringReport')->latest();
             },
-            'progressReports' => function ($q) use ($user) {
-                if ($user->role === 'state_official') {
-                    $q->where('user_id', $user->id);
-                }
+            'progressReports' => function ($q) {
                 $q->latest()->select('id', 'scheme_id', 'status', 'physical_progress_pct', 'financial_progress_pct', 'reporting_period', 'created_at');
             },
             'fmbapProject',
         ])->orderByDesc('id')->get();
+
+        $totalReleasedCr = 0.0;
+        $totalCurtailedCr = 0.0;
 
         foreach ($schemes as $scheme) {
             if ($scheme->fmbapProject && !empty($scheme->fmbapProject->funding_pattern)) {
@@ -55,6 +52,45 @@ class SchemeController extends Controller
                     $scheme->state_share_pct = $sPct;
                 }
             }
+
+            $centralSharePct = (float) ($scheme->central_share_pct ?? 90);
+            $stateSharePct = (float) ($scheme->state_share_pct ?? 10);
+            $sanctionedCr = (float) ($scheme->sanctioned_amount_cr ?? 0);
+            $centralEntitlementCr = round($sanctionedCr * ($centralSharePct / 100), 2);
+            $scheme->central_share_entitlement_cr = $centralEntitlementCr;
+
+            $approvedPrs = $scheme->paymentRequests ? $scheme->paymentRequests->where('status', 'APPROVED') : collect();
+            $approvedClaimsSum = round($approvedPrs->sum(function ($pr) {
+                return (float) ($pr->approved_amount_cr ?? $pr->requested_amount_cr ?? 0);
+            }), 2);
+            $curtailedSum = round($approvedPrs->sum(function ($pr) {
+                return (float) ($pr->deduction_amount_cr ?? 0);
+            }), 2);
+
+            $fmbapReleased = (float) ($scheme->fmbapProject?->released_central_share_cr ?? 0);
+            $utilisedCs = !empty($scheme->fund_utilised_cs_lakh) ? round(((float) $scheme->fund_utilised_cs_lakh) / 100, 2) : 0;
+            $cumReleased = max($approvedClaimsSum, $fmbapReleased, $utilisedCs);
+
+            $releasedDisplay = $approvedClaimsSum > 0 ? $approvedClaimsSum : $cumReleased;
+            $balanceCr = max(0, round($centralEntitlementCr - $cumReleased, 2));
+
+            $scheme->approved_claims_release_cr = $approvedClaimsSum;
+            $scheme->curtailed_amount_cr        = $curtailedSum;
+            $scheme->released_central_share_cr  = $releasedDisplay;
+            $scheme->cumulative_released_cr     = $cumReleased;
+            $scheme->balance_central_share_cr   = $balanceCr;
+
+            // Curtailment reason and sanction order details
+            $curtailedPr = $approvedPrs->where('deduction_amount_cr', '>', 0)->first();
+            $scheme->latest_curtailment_reason = $curtailedPr?->curtailment_reason;
+
+            $latestSanctionedPr = $approvedPrs->whereNotNull('sanction_order_no')->first();
+            $scheme->latest_sanction_order_no = $latestSanctionedPr?->sanction_order_no;
+            $scheme->latest_sanction_order_date = $latestSanctionedPr?->sanction_order_date;
+            $scheme->latest_sanction_order_doc_path = $latestSanctionedPr?->sanction_order_doc_path;
+
+            $totalReleasedCr += $releasedDisplay;
+            $totalCurtailedCr += $curtailedSum;
         }
 
         $totalSanctioned = Scheme::sum('sanctioned_amount_cr');
@@ -69,6 +105,8 @@ class SchemeController extends Controller
                 'completed'        => $completedCount,
                 'ongoing'          => $totalCount - $completedCount,
                 'total_sanctioned' => number_format($totalSanctioned, 2),
+                'total_released'   => number_format($totalReleasedCr, 2),
+                'total_curtailed'  => number_format($totalCurtailedCr, 2),
                 'avg_progress'     => $avgProgress,
             ],
         ]);
@@ -287,7 +325,16 @@ class SchemeController extends Controller
         }
 
         // Limit to 30 for dropdown performance, strictly newest first
-        $schemes = $query->with('fmbapProject')->orderByDesc('id')->take(30)->get();
+        $schemes = $query->with([
+            'fmbapProject',
+            'paymentRequests' => function ($q) {
+                $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+            }
+        ])->orderByDesc('id')->take(30)->get();
+
+        $schemes->each(function ($scheme) {
+            $scheme->enrichFinancialMetrics();
+        });
 
         return response()->json($schemes);
     }

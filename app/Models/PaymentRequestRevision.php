@@ -16,6 +16,13 @@ class PaymentRequestRevision extends Model
         'version_label',
         'status_at_revision',
         'requested_amount_cr',
+        'bb_recommended_amount_cr',
+        'approved_amount_cr',
+        'deduction_amount_cr',
+        'curtailment_reason',
+        'sanction_order_no',
+        'sanction_order_date',
+        'sanction_order_doc_path',
         'instalment_number',
         'bank_details',
         'state_remarks',
@@ -40,11 +47,15 @@ class PaymentRequestRevision extends Model
     protected function casts(): array
     {
         return [
-            'voucher_doc_paths'     => 'array',
-            'additional_doc_paths'  => 'array',
-            'requested_amount_cr'   => 'decimal:2',
-            'physical_progress_pct' => 'decimal:2',
-            'financial_progress_pct'=> 'decimal:2',
+            'voucher_doc_paths'        => 'array',
+            'additional_doc_paths'     => 'array',
+            'sanction_order_date'      => 'date',
+            'requested_amount_cr'      => 'decimal:2',
+            'bb_recommended_amount_cr' => 'decimal:2',
+            'approved_amount_cr'       => 'decimal:2',
+            'deduction_amount_cr'      => 'decimal:2',
+            'physical_progress_pct'    => 'decimal:2',
+            'financial_progress_pct'   => 'decimal:2',
         ];
     }
 
