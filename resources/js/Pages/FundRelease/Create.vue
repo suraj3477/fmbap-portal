@@ -58,6 +58,7 @@ const form = ref({
     financial_progress_pct: '',
     financial_progress_description: '',
     narrative_progress_report: '',
+    synced_from_monthly_report: null,
     // Step 4
     utilization_certificate: null,
     vouchers: [],
@@ -176,6 +177,42 @@ const onSchemeSelected = (scheme) => {
     } else if (scheme.metadata?.remarks) {
         form.value.state_remarks = scheme.metadata.remarks;
     }
+
+    // 8. Auto-populate Physical & Financial Progress from latest Monthly Report or Scheme Master
+    const initialReport = (scheme.progress_reports && scheme.progress_reports.length > 0)
+        ? scheme.progress_reports[0]
+        : null;
+
+    if (initialReport) {
+        form.value.physical_progress_pct = initialReport.physical_progress_pct ?? form.value.physical_progress_pct;
+        form.value.financial_progress_pct = initialReport.financial_progress_pct ?? form.value.financial_progress_pct;
+        form.value.physical_progress_description = initialReport.physical_progress_description ?? form.value.physical_progress_description;
+        form.value.financial_progress_description = initialReport.financial_progress_description ?? form.value.financial_progress_description;
+        form.value.narrative_progress_report = initialReport.narrative_report ?? form.value.narrative_progress_report;
+        form.value.synced_from_monthly_report = initialReport;
+    } else if (scheme.physical_progress_pct !== undefined && scheme.physical_progress_pct !== null) {
+        form.value.physical_progress_pct = scheme.physical_progress_pct;
+    }
+
+    // Also fetch fresh baseline data from API to ensure synchronization with monthly reports
+    axios.get(route('progress-reports.scheme.baseline', scheme.id))
+        .then(res => {
+            if (res.data?.last_monthly_report) {
+                const rep = res.data.last_monthly_report;
+                form.value.physical_progress_pct = rep.physical_progress_pct ?? form.value.physical_progress_pct;
+                form.value.financial_progress_pct = rep.financial_progress_pct ?? form.value.financial_progress_pct;
+                if (!form.value.physical_progress_description && rep.physical_progress_description) {
+                    form.value.physical_progress_description = rep.physical_progress_description;
+                }
+                if (!form.value.financial_progress_description && rep.financial_progress_description) {
+                    form.value.financial_progress_description = rep.financial_progress_description;
+                }
+                form.value.synced_from_monthly_report = rep;
+            }
+        })
+        .catch(e => {
+            // Optional fallback
+        });
 };
 
 const computeCalculatedShares = () => {
@@ -741,10 +778,35 @@ const saveStep = async (isFinalSubmit = false) => {
                     <!-- ================= STEP 3: PROGRESS METRICS ================= -->
                     <div v-if="currentStep === 3" class="space-y-6 animate-fade-in">
                         <div class="border-b pb-4">
-                            <h3 class="text-lg font-bold text-gray-900">Step 3: Latest Physical & Financial Progress</h3>
+                            <h3 class="text-lg font-bold text-gray-900">Step 3: Latest Physical &amp; Financial Progress</h3>
                             <p class="text-xs text-gray-500 mt-1">Report cumulative site execution status to justify release of funds as per Brahmaputra Board monitoring standards.</p>
                         </div>
                         
+                        <!-- Auto-synchronization Banner with Monthly Progress Reports -->
+                        <div v-if="form.synced_from_monthly_report" class="p-4 bg-gradient-to-r from-blue-50 via-sky-50 to-indigo-50 border border-blue-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+                            <div class="flex items-center gap-3">
+                                <div class="w-10 h-10 rounded-xl bg-[#0F4C9F] text-white flex items-center justify-center font-black text-lg shadow-xs shrink-0">
+                                    ⚡
+                                </div>
+                                <div>
+                                    <div class="text-xs font-black text-[#071F42] flex items-center gap-2">
+                                        <span>Auto-Synchronized from Monthly Progress Report</span>
+                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-blue-100 text-[#0F4C9F] border border-blue-200">
+                                            {{ form.synced_from_monthly_report.reporting_period || ('Month ' + form.synced_from_monthly_report.reporting_month + '/' + form.synced_from_monthly_report.reporting_year) }}
+                                        </span>
+                                    </div>
+                                    <p class="text-[11px] text-blue-800 mt-0.5">
+                                        Physical (<strong>{{ form.synced_from_monthly_report.physical_progress_pct }}%</strong>) and Financial (<strong>{{ form.synced_from_monthly_report.financial_progress_pct }}%</strong>) progress auto-populated from the latest State monthly report. You can adjust if fresh ground updates occurred.
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2 shrink-0">
+                                <span class="text-[10px] font-bold px-2.5 py-1 rounded-lg bg-white text-blue-700 border border-blue-200 shadow-2xs">
+                                    Status: {{ form.synced_from_monthly_report.status }}
+                                </span>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <!-- Physical Progress -->
                             <div class="space-y-4 border border-blue-200 p-5 rounded-2xl bg-blue-50/30">

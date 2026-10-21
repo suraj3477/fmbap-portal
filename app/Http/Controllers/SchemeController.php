@@ -329,6 +329,9 @@ class SchemeController extends Controller
             'fmbapProject',
             'paymentRequests' => function ($q) {
                 $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+            },
+            'progressReports' => function ($q) {
+                $q->latest('reporting_year')->latest('reporting_month')->latest('id');
             }
         ])->orderByDesc('id')->take(30)->get();
 

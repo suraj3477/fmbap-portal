@@ -43,6 +43,9 @@ class PaymentRequestController extends Controller
                 'fmbapProject',
                 'paymentRequests' => function ($q) {
                     $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+                },
+                'progressReports' => function ($q) {
+                    $q->latest('reporting_year')->latest('reporting_month')->latest('id');
                 }
             ])
             ->orderByDesc('id')
@@ -54,6 +57,9 @@ class PaymentRequestController extends Controller
                 'fmbapProject',
                 'paymentRequests' => function ($q) {
                     $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
+                },
+                'progressReports' => function ($q) {
+                    $q->latest('reporting_year')->latest('reporting_month')->latest('id');
                 }
             ])->find($preselectedSchemeId);
 

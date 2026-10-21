@@ -227,6 +227,17 @@ const canViewMonitoring = computed(() =>
                         </Link>
 
                         <Link
+                            :href="route('progress-reports.index')"
+                            :class="[
+                                route().current('progress-reports.*') ? 'bg-white text-[#0F4C9F] shadow-xs font-extrabold' : 'text-blue-100/90 hover:bg-white/10 hover:text-white font-medium',
+                                'px-3.5 py-2 rounded-lg text-xs transition inline-flex items-center gap-1.5'
+                            ]"
+                        >
+                            <span>Physical &amp; Financial Progress</span>
+                            <span class="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-emerald-400/20 text-emerald-300 border border-emerald-400/30">Monthly</span>
+                        </Link>
+
+                        <Link
                             v-if="canViewMonitoring"
                             :href="route('monitoring-requests.index')"
                             :class="[
@@ -280,6 +291,13 @@ const canViewMonitoring = computed(() =>
                         class="block px-3 py-2 rounded-md text-xs font-bold text-white hover:bg-white/10"
                     >
                         Fund Release Claims
+                    </Link>
+                    <Link
+                        :href="route('progress-reports.index')"
+                        class="block px-3 py-2 rounded-md text-xs font-bold text-emerald-300 hover:bg-white/10 flex items-center justify-between"
+                    >
+                        <span>Physical &amp; Financial Progress</span>
+                        <span class="text-[9px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold">Monthly</span>
                     </Link>
                     <Link
                         v-if="canViewMonitoring"

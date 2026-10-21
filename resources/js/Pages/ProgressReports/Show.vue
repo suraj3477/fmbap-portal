@@ -1,22 +1,31 @@
 <script setup>
 import { ref, computed } from 'vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import AuditTimeline from '@/Components/AuditTimeline.vue';
 
 const props = defineProps({
     report: {
         type: Object,
         required: true,
     },
-    userRole: String,
+    timeline: {
+        type: Array,
+        default: () => [],
+    },
+    userRole: {
+        type: String,
+        default: '',
+    },
 });
 
 const isBB = computed(() => props.userRole === 'board_official' || props.userRole === 'super_admin');
 const isMoJS = computed(() => props.userRole === 'mojs_official' || props.userRole === 'super_admin');
+const isState = computed(() => props.userRole === 'state_official' || props.userRole === 'super_admin');
 
 const showDecisionModal = ref(false);
 const decisionType = ref('');
+const activePhoto = ref(null);
+
 const decisionForm = useForm({
     decision: '',
     remarks: '',
@@ -30,7 +39,10 @@ const openDecisionModal = (type) => {
 };
 
 const submitDecision = () => {
-    const routeName = isBB.value ? 'progress-reports.bbReview' : 'progress-reports.mojsReview';
+    const routeName = isBB.value && props.report.status === 'SUBMITTED'
+        ? 'progress-reports.bbReview'
+        : 'progress-reports.mojsReview';
+
     decisionForm.post(route(routeName, props.report.id), {
         preserveScroll: true,
         onSuccess: () => {
@@ -38,152 +50,564 @@ const submitDecision = () => {
         },
     });
 };
+
+const getStatusBadge = (status) => {
+    switch (status) {
+        case 'APPROVED':
+        case 'REVIEWED_BY_MOJS':
+            return { label: status === 'APPROVED' ? 'Approved by MoJS' : 'MoJS Verified', class: 'bg-emerald-50 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' };
+        case 'REVIEWED_BY_BB':
+            return { label: 'Brahmaputra Board Reviewed', class: 'bg-indigo-50 text-indigo-800 border-indigo-300', dot: 'bg-indigo-500' };
+        case 'SUBMITTED':
+            return { label: 'Submitted (Pending BB Review)', class: 'bg-blue-50 text-blue-800 border-blue-300', dot: 'bg-blue-500' };
+        case 'NEEDS_CORRECTION':
+            return { label: 'Needs Correction', class: 'bg-amber-50 text-amber-900 border-amber-300', dot: 'bg-amber-500' };
+        default:
+            return { label: status, class: 'bg-gray-50 text-gray-800 border-gray-300', dot: 'bg-gray-400' };
+    }
+};
+
+const badge = computed(() => getStatusBadge(props.report.status));
 </script>
 
 <template>
-    <Head title="Progress Report Details" />
+    <Head :title="`Progress Report #${report.id} — ${report.scheme?.scheme_code || ''}`" />
 
     <AuthenticatedLayout>
         <template #header>
-            <div class="flex items-center gap-4">
-                <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                    Progress Report Details
-                </h2>
-                <span 
-                    class="px-3 py-1 text-xs font-bold rounded-full ml-auto border"
-                    :class="{
-                        'bg-blue-50 text-blue-700 border-blue-200': report.status === 'SUBMITTED',
-                        'bg-purple-50 text-purple-700 border-purple-200': report.status === 'REVIEWED_BY_BB',
-                        'bg-emerald-50 text-emerald-700 border-emerald-200': report.status === 'APPROVED',
-                        'bg-amber-50 text-amber-700 border-amber-200': report.status === 'NEEDS_CORRECTION'
-                    }"
-                >
-                    Status: {{ report.status.replace(/_/g, ' ') }}
-                </span>
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <Link
+                        :href="route('progress-reports.index')"
+                        class="w-9 h-9 rounded-xl bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition shrink-0"
+                    >
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                    </Link>
+                    <div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <h2 class="font-black text-lg text-gray-900 leading-tight">
+                                Progress Report #{{ report.id }}
+                            </h2>
+                            <span class="text-xs font-mono font-bold text-gray-500 bg-gray-100 px-2 py-0.5 rounded border border-gray-200">
+                                {{ report.scheme?.scheme_code }}
+                            </span>
+                            <span :class="badge.class" class="px-2.5 py-0.5 rounded-full text-xs font-black border flex items-center gap-1.5 shadow-2xs">
+                                <span :class="badge.dot" class="w-1.5 h-1.5 rounded-full"></span>
+                                <span>{{ badge.label }}</span>
+                            </span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-0.5">
+                            Reporting Period: <strong class="text-gray-800">{{ report.reporting_period }}</strong> &bull; Submitted on {{ new Date(report.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <a
+                        v-if="report.progress_report_doc_path"
+                        :href="report.progress_report_doc_path"
+                        target="_blank"
+                        class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50 shadow-2xs transition"
+                    >
+                        <svg class="w-4 h-4 text-rose-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"/></svg>
+                        Official PDF
+                    </a>
+
+                    <Link
+                        v-if="report.status === 'NEEDS_CORRECTION' && (isState || isBB)"
+                        :href="route('progress-reports.edit', report.id)"
+                        class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black shadow-sm transition"
+                    >
+                        ✏️ Amend Report
+                    </Link>
+                </div>
             </div>
         </template>
 
-        <div class="py-8 mx-auto sm:px-6 lg:px-8 w-full">
-            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                
-                <!-- Left Column -->
-                <div class="col-span-2 space-y-6">
-                    
-                    <!-- Context -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-                        <div class="flex items-start gap-4">
-                            <div class="bg-gray-100 p-3 rounded-lg text-gray-600 shrink-0">
-                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path></svg>
-                            </div>
-                            <div>
-                                <h3 class="font-bold text-lg text-gray-900">{{ report.scheme?.scheme_name }}</h3>
-                                <p class="text-sm text-gray-500 mt-1">Code: <span class="font-semibold">{{ report.scheme?.scheme_code }}</span> | State: <span class="font-semibold">{{ report.scheme?.state }}</span></p>
-                                <p class="text-sm text-emerald-700 font-bold mt-2">Reporting Period: {{ report.reporting_period }}</p>
-                            </div>
-                        </div>
-                    </div>
+        <div class="py-6 px-4 sm:px-6 lg:px-8 space-y-6 max-w-7xl mx-auto">
 
-                    <!-- Details -->
-                    <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div class="grid grid-cols-2">
-                            <div class="p-6 border-r border-gray-200">
-                                <h4 class="font-bold text-blue-900 mb-4 flex items-center gap-2">
-                                    <div class="w-2 h-2 rounded-full bg-blue-500"></div>
-                                    Physical Progress
-                                </h4>
-                                <div class="text-4xl font-light text-gray-900 mb-2">{{ report.physical_progress_pct }}%</div>
-                                <p class="text-sm text-gray-600 leading-relaxed">{{ report.physical_progress_description || 'No description provided.' }}</p>
-                            </div>
-                            <div class="p-6">
-                                <h4 class="font-bold text-green-900 mb-4 flex items-center gap-2">
-                                    <div class="w-2 h-2 rounded-full bg-green-500"></div>
-                                    Financial Progress
-                                </h4>
-                                <div class="text-4xl font-light text-gray-900 mb-2">{{ report.financial_progress_pct }}%</div>
-                                <p class="text-sm text-gray-600 leading-relaxed">{{ report.financial_progress_description || 'No description provided.' }}</p>
-                            </div>
-                        </div>
-                        <div class="p-6 border-t border-gray-200 bg-gray-50">
-                            <h4 class="font-semibold text-gray-700 mb-2">Narrative Summary</h4>
-                            <p class="text-sm text-gray-800 bg-white p-4 rounded border border-gray-200">{{ report.narrative_report || 'None provided.' }}</p>
-                        </div>
-                        <div v-if="report.progress_report_doc_path" class="p-6 border-t border-gray-200 flex items-center justify-between">
-                            <div class="flex items-center gap-3">
-                                <svg class="w-8 h-8 text-red-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clip-rule="evenodd"></path></svg>
-                                <div>
-                                    <p class="text-sm font-bold text-gray-800">Attached Official PDF</p>
+            <!-- Correction Alert if Required -->
+            <div v-if="report.status === 'NEEDS_CORRECTION'" class="p-5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2 shadow-xs">
+                <div class="flex items-center gap-2 font-black text-xs uppercase tracking-wide text-amber-900">
+                    <span>⚠️</span>
+                    <span>Correction Required Before Approval</span>
+                </div>
+                <div v-if="report.bb_remarks" class="text-xs">
+                    <strong>Brahmaputra Board Remarks:</strong> {{ report.bb_remarks }}
+                </div>
+                <div v-if="report.mojs_remarks" class="text-xs">
+                    <strong>MoJS Remarks:</strong> {{ report.mojs_remarks }}
+                </div>
+            </div>
+
+            <!-- GRID: 2/3 Content & 1/3 Sidebar -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- MAIN COLUMN -->
+                <div class="lg:col-span-2 space-y-6">
+
+                    <!-- Scheme Context Banner -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5">
+                        <div class="flex items-start justify-between gap-4">
+                            <div>
+                                <span class="text-[10px] font-black uppercase tracking-wider text-[#0F4C9F]">Scheme Overview</span>
+                                <h3 class="text-base font-black text-gray-900 mt-0.5">
+                                    {{ report.scheme?.scheme_name }}
+                                </h3>
+                                <div class="flex items-center gap-3 text-xs text-gray-500 mt-1 flex-wrap">
+                                    <span>State: <strong class="text-gray-800">{{ report.scheme?.state }}</strong></span>
+                                    <span>&bull;</span>
+                                    <span>Sanctioned Cost: <strong class="text-gray-800">₹{{ report.scheme?.sanctioned_amount_cr }} Cr</strong></span>
+                                    <span>&bull;</span>
+                                    <span>Division: <strong class="text-gray-800">{{ report.scheme?.division || 'HQ' }}</strong></span>
                                 </div>
                             </div>
-                            <a :href="report.progress_report_doc_path" target="_blank" class="text-emerald-600 font-semibold text-sm hover:underline border border-emerald-200 px-4 py-2 rounded">View Document</a>
-                        </div>
-                    </div>
-                </div>
 
-                <!-- Right Column: Audit & Actions -->
-                <div class="space-y-6 lg:sticky lg:top-6 lg:self-start lg:max-h-[90vh] overflow-y-auto pr-2 pb-4">
-                    
-                    <!-- Action Panel -->
-                    <div v-if="report.status !== 'APPROVED'" class="bg-white rounded-xl shadow border border-emerald-200 overflow-hidden">
-                        <div class="bg-emerald-50 px-6 py-4 border-b border-emerald-200">
-                            <h3 class="font-bold text-emerald-900">Review Actions</h3>
-                        </div>
-                        <div class="p-6 flex flex-col gap-3">
-                            
-                            <!-- BB Actions -->
-                            <template v-if="isBB && report.status === 'SUBMITTED'">
-                                <button @click="openDecisionModal('REVIEWED_BY_BB')" class="w-full bg-indigo-600 text-white font-bold py-2.5 rounded hover:bg-indigo-700">
-                                    Acknowledge & Forward
-                                </button>
-                                <button @click="openDecisionModal('NEEDS_CORRECTION')" class="w-full bg-amber-100 text-amber-800 border border-amber-300 font-bold py-2.5 rounded hover:bg-amber-200 flex items-center justify-center gap-2">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
-                                    Ask State to Correct
-                                </button>
-                            </template>
-                            
-                            <!-- MoJS Actions -->
-                            <template v-if="isMoJS && report.status === 'REVIEWED_BY_BB'">
-                                <button @click="openDecisionModal('APPROVED')" class="w-full bg-emerald-600 text-white font-bold py-2.5 rounded hover:bg-emerald-700">
-                                    Approve & File Report
-                                </button>
-                                <button @click="openDecisionModal('NEEDS_CORRECTION')" class="w-full bg-amber-100 text-amber-800 border border-amber-300 font-bold py-2.5 rounded hover:bg-amber-200 flex items-center justify-center gap-2">
-                                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
-                                    Ask State to Correct
-                                </button>
-                            </template>
-
-                            <div v-if="!isBB && !isMoJS && report.status !== 'NEEDS_CORRECTION'" class="text-sm text-gray-500 italic text-center">
-                                Under review by higher authority.
-                            </div>
-                            <div v-if="report.status === 'NEEDS_CORRECTION' && userRole === 'state_official'" class="text-sm text-center">
-                                <a :href="route('progress-reports.edit', report.id)" class="bg-amber-600 text-white px-4 py-2 block rounded font-bold hover:bg-amber-700">Go to Correction Form</a>
-                            </div>
+                            <Link
+                                :href="route('schemes.show', report.scheme_id)"
+                                class="text-xs font-bold text-[#0F4C9F] hover:underline shrink-0"
+                            >
+                                Scheme Dossier &rarr;
+                            </Link>
                         </div>
                     </div>
 
-                    <AuditTimeline module="progress-reports" :recordId="report.id" />
+                    <!-- KPI Cards: Physical vs Financial -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <!-- Physical Progress -->
+                        <div class="bg-white rounded-2xl border border-blue-200 shadow-xs p-5 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-black uppercase text-blue-900 flex items-center gap-1.5">
+                                    <span>🏗️</span>
+                                    <span>Physical Progress</span>
+                                </span>
+                                <span class="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-200">
+                                    Ground Execution
+                                </span>
+                            </div>
+
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-black text-[#0F4C9F]">{{ report.physical_progress_pct }}%</span>
+                                <span class="text-xs font-bold text-gray-500">completed</span>
+                            </div>
+
+                            <!-- Progress Bar -->
+                            <div class="w-full bg-blue-100 rounded-full h-3 overflow-hidden">
+                                <div
+                                    class="h-full rounded-full bg-gradient-to-r from-blue-500 to-[#0F4C9F] transition-all duration-500"
+                                    :style="{ width: `${Math.min(100, report.physical_progress_pct || 0)}%` }"
+                                ></div>
+                            </div>
+
+                            <p class="text-xs text-gray-600 leading-relaxed pt-1">
+                                {{ report.physical_progress_description || 'No detailed ground work description entered.' }}
+                            </p>
+                        </div>
+
+                        <!-- Financial Progress -->
+                        <div class="bg-white rounded-2xl border border-emerald-200 shadow-xs p-5 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-xs font-black uppercase text-emerald-900 flex items-center gap-1.5">
+                                    <span>💰</span>
+                                    <span>Financial Progress</span>
+                                </span>
+                                <span class="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                    Audit &amp; Expenditure
+                                </span>
+                            </div>
+
+                            <div class="flex items-baseline gap-2">
+                                <span class="text-4xl font-black text-emerald-700">{{ report.financial_progress_pct }}%</span>
+                                <span class="text-xs font-bold text-gray-500">utilized</span>
+                            </div>
+
+                            <!-- Progress Bar -->
+                            <div class="w-full bg-emerald-100 rounded-full h-3 overflow-hidden">
+                                <div
+                                    class="h-full rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 transition-all duration-500"
+                                    :style="{ width: `${Math.min(100, report.financial_progress_pct || 0)}%` }"
+                                ></div>
+                            </div>
+
+                            <p class="text-xs text-gray-600 leading-relaxed pt-1">
+                                {{ report.financial_progress_description || 'No detailed financial expenditure description entered.' }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Component Break-Up Table -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                            <div>
+                                <h3 class="font-extrabold text-sm text-gray-900">
+                                    Physical Progress Break-Up (Component-wise)
+                                </h3>
+                                <p class="text-[11px] text-gray-400">
+                                    Detailed engineering quantities completed vs sanctioned scopes.
+                                </p>
+                            </div>
+                            <span class="text-xs font-mono font-bold text-gray-500">
+                                {{ (report.physical_breakup || []).length }} Components
+                            </span>
+                        </div>
+
+                        <div v-if="!report.physical_breakup || report.physical_breakup.length === 0" class="text-xs text-gray-500 italic py-4 text-center">
+                            No granular component break-up recorded for this report.
+                        </div>
+
+                        <div v-else class="overflow-x-auto border border-gray-200 rounded-xl">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-gray-50 text-gray-600 font-bold uppercase text-[10px] tracking-wider border-b border-gray-200">
+                                    <tr>
+                                        <th class="px-4 py-2.5">#</th>
+                                        <th class="px-4 py-2.5">Component</th>
+                                        <th class="px-4 py-2.5 text-right">Scope</th>
+                                        <th class="px-4 py-2.5 text-center">Unit</th>
+                                        <th class="px-4 py-2.5 text-right">Completed</th>
+                                        <th class="px-4 py-2.5">Progress (%)</th>
+                                        <th class="px-4 py-2.5">Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-gray-100">
+                                    <tr v-for="(item, idx) in report.physical_breakup" :key="idx" class="hover:bg-slate-50/50">
+                                        <td class="px-4 py-2.5 font-bold text-gray-400">{{ idx + 1 }}</td>
+                                        <td class="px-4 py-2.5 font-bold text-gray-900">{{ item.name }}</td>
+                                        <td class="px-4 py-2.5 text-right font-mono text-gray-700">{{ item.scope }}</td>
+                                        <td class="px-4 py-2.5 text-center text-gray-500">{{ item.unit }}</td>
+                                        <td class="px-4 py-2.5 text-right font-mono font-bold text-slate-900">{{ item.completed }}</td>
+                                        <td class="px-4 py-2.5">
+                                            <div class="flex items-center gap-2">
+                                                <div class="w-16 bg-gray-100 rounded-full h-2 overflow-hidden">
+                                                    <div
+                                                        class="h-full rounded-full bg-emerald-500"
+                                                        :style="{ width: `${Math.min(100, item.pct || 0)}%` }"
+                                                    ></div>
+                                                </div>
+                                                <span class="font-mono font-black text-xs text-slate-900 w-10 text-right">{{ item.pct || 0 }}%</span>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-2.5">
+                                            <span
+                                                :class="{
+                                                    'bg-emerald-50 text-emerald-700 border-emerald-200': item.status === 'Completed',
+                                                    'bg-blue-50 text-blue-700 border-blue-200': item.status === 'In Progress',
+                                                    'bg-gray-100 text-gray-600 border-gray-200': item.status === 'Not Started'
+                                                }"
+                                                class="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                                            >
+                                                {{ item.status }}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Geo-Tagged Media Gallery -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                            <div>
+                                <h3 class="font-extrabold text-sm text-gray-900">
+                                    Geo-Tagged Site Media &amp; Field Inspection Photos
+                                </h3>
+                                <p class="text-[11px] text-gray-400">
+                                    Photos captured on ground with GPS stamps for technical verification.
+                                </p>
+                            </div>
+                            <span class="text-xs font-mono font-bold text-gray-500">
+                                {{ (report.geo_tagged_files || []).length }} files
+                            </span>
+                        </div>
+
+                        <!-- Video / Drone URL Link -->
+                        <div v-if="report.video_url" class="p-4 rounded-xl bg-gradient-to-r from-teal-50 to-blue-50 border border-teal-200 flex items-center justify-between gap-4">
+                            <div class="flex items-center gap-3">
+                                <span class="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-base shadow-xs shrink-0">
+                                    🎥
+                                </span>
+                                <div>
+                                    <div class="text-xs font-black text-teal-950">Drone Flight / Video Survey Footage</div>
+                                    <p class="text-[11px] text-teal-700 truncate max-w-md font-mono mt-0.5">
+                                        {{ report.video_url }}
+                                    </p>
+                                </div>
+                            </div>
+                            <a
+                                :href="report.video_url"
+                                target="_blank"
+                                class="px-3.5 py-1.5 rounded-lg bg-white border border-teal-300 text-teal-800 text-xs font-bold shadow-2xs hover:bg-teal-50 shrink-0"
+                            >
+                                Open Video &rarr;
+                            </a>
+                        </div>
+
+                        <!-- Photo Grid -->
+                        <div v-if="!report.geo_tagged_files || report.geo_tagged_files.length === 0" class="text-xs text-gray-500 italic py-4 text-center">
+                            No field photographs were uploaded with this submission.
+                        </div>
+
+                        <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                            <div
+                                v-for="(file, idx) in report.geo_tagged_files"
+                                :key="idx"
+                                @click="activePhoto = file"
+                                class="rounded-xl border border-gray-200 overflow-hidden bg-slate-50 shadow-2xs group cursor-pointer hover:shadow-md transition"
+                            >
+                                <div class="h-36 bg-gray-200 relative overflow-hidden flex items-center justify-center">
+                                    <img
+                                        v-if="file.type === 'photo'"
+                                        :src="file.path"
+                                        :alt="file.caption"
+                                        class="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                                    />
+                                    <div v-else class="text-gray-400 font-bold text-xs flex flex-col items-center gap-1">
+                                        <span class="text-2xl">🎬</span>
+                                        <span>Video Attachment</span>
+                                    </div>
+                                    <div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white font-bold text-xs">
+                                        🔍 Click to Enlarge
+                                    </div>
+                                </div>
+                                <div class="p-3 space-y-1">
+                                    <div class="text-xs font-black text-gray-900 truncate" :title="file.caption || file.name">
+                                        {{ file.caption || file.name || 'Site inspection photo' }}
+                                    </div>
+                                    <div v-if="file.lat" class="text-[10px] text-gray-500 font-mono flex items-center gap-1">
+                                        <span>📍</span>
+                                        <span>{{ file.lat }}, {{ file.lng }}</span>
+                                    </div>
+                                    <div v-if="file.capture_date" class="text-[10px] text-gray-400">
+                                        Captured on {{ file.capture_date }}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Narrative Summary -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-2">
+                        <h3 class="font-extrabold text-sm text-gray-900">Narrative Progress Summary</h3>
+                        <p class="text-xs text-gray-700 leading-relaxed bg-slate-50 p-4 rounded-xl border border-gray-200 whitespace-pre-line">
+                            {{ report.narrative_report || 'No detailed narrative entered.' }}
+                        </p>
+                    </div>
+
                 </div>
+
+                <!-- SIDEBAR: Progression Curve, Baseline & Review Actions -->
+                <div class="space-y-6">
+
+                    <!-- Review Actions Panel -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
+                        <h3 class="font-extrabold text-sm text-gray-900 border-b border-gray-100 pb-3 flex items-center justify-between">
+                            <span>Technical Review &amp; Actions</span>
+                            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-bold">
+                                {{ report.status }}
+                            </span>
+                        </h3>
+
+                        <!-- If BB Official & Submitted -->
+                        <div v-if="isBB && report.status === 'SUBMITTED'" class="space-y-2">
+                            <p class="text-xs text-gray-600">
+                                Brahmaputra Board official review of monthly site execution.
+                            </p>
+                            <button
+                                @click="openDecisionModal('REVIEWED_BY_BB')"
+                                class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition"
+                            >
+                                ✅ Technical Review Satisfactory &amp; Forward
+                            </button>
+                            <button
+                                @click="openDecisionModal('NEEDS_CORRECTION')"
+                                class="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs transition"
+                            >
+                                ⚠️ Request State Correction
+                            </button>
+                        </div>
+
+                        <!-- If MoJS Official & BB Reviewed -->
+                        <div v-else-if="isMoJS && report.status === 'REVIEWED_BY_BB'" class="space-y-2">
+                            <p class="text-xs text-gray-600">
+                                Ministry (MoJS) final statutory approval of monthly report.
+                            </p>
+                            <button
+                                @click="openDecisionModal('APPROVED')"
+                                class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition"
+                            >
+                                ✅ Approve &amp; Affirm Scheme Progress
+                            </button>
+                            <button
+                                @click="openDecisionModal('NEEDS_CORRECTION')"
+                                class="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs transition"
+                            >
+                                ⚠️ Reject / Ask State to Resubmit
+                            </button>
+                        </div>
+
+                        <!-- Approved State -->
+                        <div v-else-if="report.status === 'APPROVED' || report.status === 'REVIEWED_BY_MOJS'" class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2">
+                            <span>✅</span>
+                            <span>Report approved &amp; permanently synced to Scheme progression.</span>
+                        </div>
+
+                        <!-- Awaiting BB Review -->
+                        <div v-else-if="report.status === 'SUBMITTED'" class="text-xs text-gray-500 italic">
+                            Report is currently undergoing technical scrutiny by Brahmaputra Board monitoring cell.
+                        </div>
+
+                        <div v-else-if="report.status === 'REVIEWED_BY_BB'" class="text-xs text-indigo-700 font-medium">
+                            BB technical scrutiny completed. Awaiting final MoJS affirmation.
+                        </div>
+                    </div>
+
+                    <!-- Chronological Progression Timeline for Scheme -->
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                            <h3 class="font-extrabold text-sm text-gray-900">
+                                Progression History (Time-Series)
+                            </h3>
+                            <span class="text-[10px] font-bold text-[#0F4C9F]">
+                                {{ timeline.length }} Reports
+                            </span>
+                        </div>
+
+                        <div class="space-y-3 relative before:absolute before:inset-0 before:left-3 before:w-0.5 before:bg-gray-200">
+                            <div
+                                v-for="t in timeline"
+                                :key="t.id"
+                                class="relative flex items-start gap-3 text-xs pl-1 group"
+                            >
+                                <div
+                                    :class="t.id === report.id ? 'bg-[#0F4C9F] ring-4 ring-blue-100' : 'bg-emerald-500'"
+                                    class="w-5 h-5 rounded-full flex items-center justify-center text-white font-mono text-[9px] shrink-0 mt-0.5 shadow-xs"
+                                >
+                                    {{ t.reporting_month }}
+                                </div>
+                                <div
+                                    :class="t.id === report.id ? 'bg-blue-50/70 border-blue-200' : 'bg-slate-50 border-gray-200'"
+                                    class="flex-1 p-2.5 rounded-xl border"
+                                >
+                                    <div class="flex items-center justify-between">
+                                        <Link :href="route('progress-reports.show', t.id)" class="font-bold text-gray-900 hover:text-[#0F4C9F]">
+                                            {{ t.reporting_period }}
+                                        </Link>
+                                        <span class="font-black text-emerald-700 font-mono">{{ t.physical_progress_pct }}%</span>
+                                    </div>
+                                    <div class="text-[10px] text-gray-400 mt-0.5 flex items-center justify-between">
+                                        <span>Fin: {{ t.financial_progress_pct }}%</span>
+                                        <span>{{ t.status }}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Linked Fund Release Claim Baseline Card -->
+                    <div v-if="report.last_payment_request" class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-3">
+                        <span class="text-[10px] font-black uppercase tracking-wider text-gray-400">Baseline Connection</span>
+                        <h4 class="text-xs font-black text-gray-900">
+                            Linked Fund Claim #{{ report.last_payment_request.id }} (Instalment #{{ report.last_payment_request.instalment_number }})
+                        </h4>
+                        <div class="space-y-1.5 text-xs text-gray-600">
+                            <div class="flex justify-between">
+                                <span>Physical at Claim:</span>
+                                <strong class="text-gray-900">{{ report.last_payment_request.physical_progress_pct }}%</strong>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Claim Amount:</span>
+                                <strong class="text-gray-900">₹{{ report.last_payment_request.requested_amount_cr }} Cr</strong>
+                            </div>
+                            <div class="flex justify-between">
+                                <span>Claim Status:</span>
+                                <strong class="text-emerald-700">{{ report.last_payment_request.status }}</strong>
+                            </div>
+                        </div>
+                        <Link
+                            :href="route('fund-release.show', report.last_payment_request.id)"
+                            class="block text-center text-xs font-bold text-[#0F4C9F] pt-2 border-t border-gray-100 hover:underline"
+                        >
+                            View Fund Release Claim &rarr;
+                        </Link>
+                    </div>
+
+                </div>
+
             </div>
+
         </div>
 
-        <!-- Decision Modal -->
-        <div v-if="showDecisionModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6 space-y-4">
-                <h3 class="text-lg font-bold text-gray-900">Review Remarks</h3>
-                
-                <form @submit.prevent="submitDecision">
+        <!-- Lightbox Modal for Photo Zoom -->
+        <div
+            v-if="activePhoto"
+            class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            @click="activePhoto = null"
+        >
+            <div class="max-w-4xl max-h-[90vh] bg-white rounded-2xl overflow-hidden shadow-2xl relative" @click.stop>
+                <div class="p-4 bg-slate-900 text-white flex items-center justify-between">
                     <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-1">Remarks <span class="text-red-500">*</span></label>
-                        <textarea v-model="decisionForm.remarks" rows="4" class="w-full border-gray-300 rounded" required placeholder="Enter review remarks..."></textarea>
+                        <h4 class="font-bold text-sm">{{ activePhoto.caption || activePhoto.name }}</h4>
+                        <p v-if="activePhoto.lat" class="text-xs text-gray-400 font-mono mt-0.5">
+                            GPS: {{ activePhoto.lat }}, {{ activePhoto.lng }}
+                        </p>
                     </div>
-                    
-                    <div class="mt-6 flex justify-end gap-3">
-                        <button type="button" @click="showDecisionModal = false" class="px-4 py-2 border rounded font-medium">Cancel</button>
-                        <button type="submit" class="px-4 py-2 text-white rounded font-bold" :class="decisionType === 'NEEDS_CORRECTION' ? 'bg-amber-600' : 'bg-emerald-600'">
-                            Confirm Action
-                        </button>
-                    </div>
-                </form>
+                    <button @click="activePhoto = null" class="text-gray-400 hover:text-white font-bold text-lg p-1">
+                        ✕
+                    </button>
+                </div>
+                <div class="p-2 bg-black flex items-center justify-center max-h-[75vh] overflow-hidden">
+                    <img :src="activePhoto.path" class="max-h-[70vh] object-contain" />
+                </div>
             </div>
         </div>
+
+        <!-- Review Decision Modal -->
+        <div
+            v-if="showDecisionModal"
+            class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4"
+            @click="showDecisionModal = false"
+        >
+            <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4" @click.stop>
+                <h3 class="font-extrabold text-base text-gray-900">
+                    Record {{ isBB ? 'Brahmaputra Board' : 'Ministry (MoJS)' }} Review Decision
+                </h3>
+
+                <p class="text-xs text-gray-500">
+                    Decision: <strong class="text-gray-900">{{ decisionType }}</strong>
+                </p>
+
+                <div>
+                    <label class="block text-xs font-black text-gray-700 mb-1">
+                        Official Scrutiny Remarks <span class="text-rose-500">*</span>
+                    </label>
+                    <textarea
+                        v-model="decisionForm.remarks"
+                        rows="4"
+                        placeholder="Enter technical scrutiny remarks, ground verification notes, or reason for correction..."
+                        class="w-full rounded-xl border-gray-300 text-xs focus:border-[#0F4C9F] focus:ring-[#0F4C9F]"
+                        required
+                    ></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-3 border-t border-gray-100">
+                    <button
+                        type="button"
+                        @click="showDecisionModal = false"
+                        class="px-4 py-2 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        @click="submitDecision"
+                        :disabled="decisionForm.processing || !decisionForm.remarks"
+                        class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs disabled:opacity-50"
+                    >
+                        Confirm Decision
+                    </button>
+                </div>
+            </div>
+        </div>
+
     </AuthenticatedLayout>
 </template>

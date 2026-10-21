@@ -189,10 +189,19 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         Route::post('/{id}/report/submit', [BbMonitoringReportController::class, 'submit'])->name('report.submit');
     });
 
-    // MODULE 3: Progress Report Monitoring (Disabled as requested - progress is tracked inside Fund Release)
-    Route::get('/progress-reports', function () {
-        return redirect()->route('fund-release.index');
-    })->name('progress-reports.index');
+    // MODULE 3: Monthly Physical & Financial Progress Tracking
+    Route::prefix('progress-reports')->name('progress-reports.')->group(function () {
+        Route::get('/', [ProgressReportController::class, 'index'])->name('index');
+        Route::get('/create', [ProgressReportController::class, 'create'])->name('create');
+        Route::post('/', [ProgressReportController::class, 'store'])->name('store');
+        Route::get('/scheme/{scheme}/baseline', [ProgressReportController::class, 'schemeBaseline'])->name('scheme.baseline');
+        Route::get('/{progress_report}', [ProgressReportController::class, 'show'])->name('show');
+        Route::get('/{progress_report}/edit', [ProgressReportController::class, 'edit'])->name('edit');
+        Route::match(['put', 'patch', 'post'], '/{progress_report}', [ProgressReportController::class, 'update'])->name('update');
+        Route::delete('/{progress_report}', [ProgressReportController::class, 'destroy'])->name('destroy');
+        Route::post('/{progress_report}/bb-review', [ProgressReportController::class, 'bbReview'])->name('bbReview');
+        Route::post('/{progress_report}/mojs-review', [ProgressReportController::class, 'mojsReview'])->name('mojsReview');
+    });
 
     // Audit Trail
     Route::get('/{module}/{id}/audit', [AuditLogController::class, 'index'])->name('audit');
