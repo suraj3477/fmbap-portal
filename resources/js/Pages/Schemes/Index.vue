@@ -57,12 +57,38 @@ const isSchemeOngoing = (s) => {
     return s.physical_status !== 'Completed' && Number(s.physical_progress_pct) < 100;
 };
 
+// Helper to determine if scheme has submissions pending at BB
+const isSchemePendingBB = (s) => {
+    const hasPendingPr = Array.isArray(s.payment_requests) && s.payment_requests.some(pr => 
+        ['SUBMITTED_TO_BB', 'BB_MONITORING_PENDING'].includes(pr.status)
+    );
+    const hasPendingProg = Array.isArray(s.progress_reports) && s.progress_reports.some(pr => 
+        pr.status === 'SUBMITTED'
+    );
+    return Boolean(hasPendingPr || hasPendingProg);
+};
+
+// Helper to determine if scheme has submissions pending at MoJS
+const isSchemePendingMoJS = (s) => {
+    const hasPendingPr = Array.isArray(s.payment_requests) && s.payment_requests.some(pr => 
+        pr.status === 'FORWARDED_TO_MOJS'
+    );
+    const hasPendingProposal = s.fmbap_project && s.fmbap_project.status === 'FORWARDED_TO_MOJS';
+    return Boolean(hasPendingPr || hasPendingProposal);
+};
+
 // ─── Computed counts (client-side) ───
 const completedCount = computed(() =>
     props.schemes.filter(s => s.physical_status === 'Completed' || Number(s.physical_progress_pct) >= 100).length
 );
 const ongoingCount = computed(() =>
     props.schemes.filter(s => isSchemeOngoing(s)).length
+);
+const pendingBBCount = computed(() =>
+    props.schemes.filter(s => isSchemePendingBB(s)).length
+);
+const pendingMoJSCount = computed(() =>
+    props.schemes.filter(s => isSchemePendingMoJS(s)).length
 );
 const totalCount = computed(() => props.schemes.length);
 
@@ -145,14 +171,14 @@ const filteredSchemes = computed(() => {
             return false;
         }
 
-        if (selectedBasin.value !== 'ALL' && s.river_basin !== selectedBasin.value) {
-            return false;
-        }
-
         if (selectedFY.value !== 'ALL' && getSchemeFY(s) !== selectedFY.value) {
             return false;
         }
 
+        if (statusFilter.value === 'PENDING_BB')
+            return isSchemePendingBB(s);
+        if (statusFilter.value === 'PENDING_MOJS')
+            return isSchemePendingMoJS(s);
         if (statusFilter.value === 'COMPLETED')
             return s.physical_status === 'Completed' || Number(s.physical_progress_pct) >= 100;
         if (statusFilter.value === 'ONGOING')
@@ -167,7 +193,7 @@ const paginatedSchemes = computed(() => {
     return filteredSchemes.value.slice(start, start + perPage);
 });
 
-watch([search, selectedState, selectedBasin, selectedFY, statusFilter, sortBy], () => {
+watch([search, selectedState, selectedFY, statusFilter, sortBy], () => {
     currentPage.value = 1;
 });
 
@@ -531,7 +557,7 @@ const submitManualScheme = () => {
                     <input
                         v-model="search"
                         type="text"
-                        placeholder="Search scheme code, name, basin, division..."
+                        placeholder="Search scheme code, name, division, state..."
                         class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 focus:bg-white focus:ring-1 focus:ring-[#0F4C9F]"
                     />
                 </div>
@@ -552,20 +578,6 @@ const submitManualScheme = () => {
                         </select>
                     </div>
 
-                    <!-- Basin Filter -->
-                    <div class="flex items-center gap-1.5">
-                        <span class="text-slate-500 font-bold uppercase text-[10px]">Basin:</span>
-                        <select
-                            v-model="selectedBasin"
-                            class="py-1.5 px-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium focus:bg-white"
-                        >
-                            <option value="ALL">All River Basins</option>
-                            <option v-for="bs in availableBasins.filter(b => b !== 'ALL')" :key="bs" :value="bs">
-                                {{ bs }}
-                            </option>
-                        </select>
-                    </div>
-
                     <!-- Financial Year Filter -->
                     <div class="flex items-center gap-1.5">
                         <span class="text-slate-500 font-bold uppercase text-[10px]">FY:</span>
@@ -581,7 +593,7 @@ const submitManualScheme = () => {
                     </div>
 
                     <!-- Status Filter Pills -->
-                    <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+                    <div class="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 flex-wrap">
                         <button
                             type="button"
                             @click="statusFilter = 'ALL'"
@@ -589,6 +601,34 @@ const submitManualScheme = () => {
                             class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer"
                         >
                             All ({{ totalCount }})
+                        </button>
+                        <button
+                            type="button"
+                            @click="statusFilter = 'PENDING_BB'"
+                            :class="statusFilter === 'PENDING_BB' ? 'bg-blue-600 text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                            class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer flex items-center gap-1.5"
+                        >
+                            <span>Pending at BB</span>
+                            <span
+                                class="px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono"
+                                :class="statusFilter === 'PENDING_BB' ? 'bg-white text-blue-700' : 'bg-slate-200 text-slate-700'"
+                            >
+                                {{ pendingBBCount }}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            @click="statusFilter = 'PENDING_MOJS'"
+                            :class="statusFilter === 'PENDING_MOJS' ? 'bg-purple-600 text-white font-bold shadow-2xs' : 'text-slate-600 hover:text-slate-900'"
+                            class="px-2.5 py-1 rounded-md text-[11px] transition cursor-pointer flex items-center gap-1.5"
+                        >
+                            <span>Pending at MoJS</span>
+                            <span
+                                class="px-1.5 py-0.2 rounded-full text-[10px] font-bold font-mono"
+                                :class="statusFilter === 'PENDING_MOJS' ? 'bg-white text-purple-700' : 'bg-slate-200 text-slate-700'"
+                            >
+                                {{ pendingMoJSCount }}
+                            </span>
                         </button>
                         <button
                             type="button"
@@ -606,19 +646,6 @@ const submitManualScheme = () => {
                         >
                             Done ({{ completedCount }})
                         </button>
-                    </div>
-
-                    <!-- Sort -->
-                    <div class="flex items-center gap-1.5">
-                        <select
-                            v-model="sortBy"
-                            class="py-1.5 px-2.5 text-xs bg-slate-50 border border-slate-300 rounded-lg text-slate-800 font-medium focus:bg-white"
-                        >
-                            <option value="ONGOING_FIRST">Ongoing First</option>
-                            <option value="SANCTIONED_DESC">Outlay (High to Low)</option>
-                            <option value="PROGRESS_DESC">Progress (High to Low)</option>
-                            <option value="NEWEST">Newest Added</option>
-                        </select>
                     </div>
                 </div>
             </div>
@@ -778,6 +805,16 @@ const submitManualScheme = () => {
                                         >
                                             <span class="w-1.5 h-1.5 rounded-full" :class="scheme.physical_status === 'Completed' || parseFloat(scheme.physical_progress_pct) >= 100 ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'"></span>
                                             {{ scheme.physical_status === 'Completed' || parseFloat(scheme.physical_progress_pct) >= 100 ? 'Completed' : 'Ongoing' }}
+                                        </div>
+                                        <div v-if="isSchemePendingBB(scheme)" class="mt-1">
+                                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-100 text-blue-900 border border-blue-200">
+                                                Pending at BB
+                                            </span>
+                                        </div>
+                                        <div v-else-if="isSchemePendingMoJS(scheme)" class="mt-1">
+                                            <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                                                Pending at MoJS
+                                            </span>
                                         </div>
                                         <div class="text-[10px] text-slate-500 mt-1 leading-tight whitespace-nowrap">
                                             <span class="font-medium">{{ formatDate(scheme.updated_at || scheme.created_at) }}</span>
