@@ -63,11 +63,43 @@ const getStatusBadge = (status) => {
         case 'NEEDS_CORRECTION':
             return { label: 'Needs Correction', class: 'bg-amber-50 text-amber-900 border-amber-300', dot: 'bg-amber-500' };
         default:
-            return { label: status, class: 'bg-gray-50 text-gray-800 border-gray-300', dot: 'bg-gray-400' };
+            return { label: status || 'Pending', class: 'bg-gray-50 text-gray-800 border-gray-300', dot: 'bg-gray-400' };
     }
 };
 
-const badge = computed(() => getStatusBadge(props.report.status));
+const badge = computed(() => getStatusBadge(props.report?.status || ''));
+
+const formatDate = (dateStr) => {
+    if (!dateStr) return '—';
+    try {
+        const d = new Date(dateStr);
+        return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch {
+        return String(dateStr);
+    }
+};
+
+const parsedBreakup = computed(() => {
+    const raw = props.report?.physical_breakup;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try {
+        return typeof raw === 'string' ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+});
+
+const parsedMedia = computed(() => {
+    const raw = props.report?.geo_tagged_files;
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    try {
+        return typeof raw === 'string' ? JSON.parse(raw) : [];
+    } catch {
+        return [];
+    }
+});
 </script>
 
 <template>
@@ -97,7 +129,7 @@ const badge = computed(() => getStatusBadge(props.report.status));
                             </span>
                         </div>
                         <p class="text-xs text-gray-500 mt-0.5">
-                            Reporting Period: <strong class="text-gray-800">{{ report.reporting_period }}</strong> &bull; Submitted on {{ new Date(report.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) }}
+                            Reporting Period: <strong class="text-gray-800">{{ report.reporting_period }}</strong> &bull; Submitted on {{ formatDate(report.created_at) }}
                         </p>
                     </div>
                 </div>
@@ -164,10 +196,10 @@ const badge = computed(() => getStatusBadge(props.report.status));
                             </div>
 
                             <Link
-                                :href="route('schemes.show', report.scheme_id)"
+                                :href="route('schemes.index')"
                                 class="text-xs font-bold text-[#0F4C9F] hover:underline shrink-0"
                             >
-                                Scheme Dossier &rarr;
+                                Schemes Catalogue &rarr;
                             </Link>
                         </div>
                     </div>
@@ -247,11 +279,11 @@ const badge = computed(() => getStatusBadge(props.report.status));
                                 </p>
                             </div>
                             <span class="text-xs font-mono font-bold text-gray-500">
-                                {{ (report.physical_breakup || []).length }} Components
+                                {{ parsedBreakup.length }} Components
                             </span>
                         </div>
 
-                        <div v-if="!report.physical_breakup || report.physical_breakup.length === 0" class="text-xs text-gray-500 italic py-4 text-center">
+                        <div v-if="!parsedBreakup.length" class="text-xs text-gray-500 italic py-4 text-center">
                             No granular component break-up recorded for this report.
                         </div>
 
@@ -269,7 +301,7 @@ const badge = computed(() => getStatusBadge(props.report.status));
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100">
-                                    <tr v-for="(item, idx) in report.physical_breakup" :key="idx" class="hover:bg-slate-50/50">
+                                    <tr v-for="(item, idx) in parsedBreakup" :key="idx" class="hover:bg-slate-50/50">
                                         <td class="px-4 py-2.5 font-bold text-gray-400">{{ idx + 1 }}</td>
                                         <td class="px-4 py-2.5 font-bold text-gray-900">{{ item.name }}</td>
                                         <td class="px-4 py-2.5 text-right font-mono text-gray-700">{{ item.scope }}</td>
@@ -316,7 +348,7 @@ const badge = computed(() => getStatusBadge(props.report.status));
                                 </p>
                             </div>
                             <span class="text-xs font-mono font-bold text-gray-500">
-                                {{ (report.geo_tagged_files || []).length }} files
+                                {{ parsedMedia.length }} files
                             </span>
                         </div>
 
@@ -343,13 +375,13 @@ const badge = computed(() => getStatusBadge(props.report.status));
                         </div>
 
                         <!-- Photo Grid -->
-                        <div v-if="!report.geo_tagged_files || report.geo_tagged_files.length === 0" class="text-xs text-gray-500 italic py-4 text-center">
+                        <div v-if="!parsedMedia.length" class="text-xs text-gray-500 italic py-4 text-center">
                             No field photographs were uploaded with this submission.
                         </div>
 
                         <div v-else class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
                             <div
-                                v-for="(file, idx) in report.geo_tagged_files"
+                                v-for="(file, idx) in parsedMedia"
                                 :key="idx"
                                 @click="activePhoto = file"
                                 class="rounded-xl border border-gray-200 overflow-hidden bg-slate-50 shadow-2xs group cursor-pointer hover:shadow-md transition"
@@ -504,7 +536,7 @@ const badge = computed(() => getStatusBadge(props.report.status));
                     </div>
 
                     <!-- Linked Fund Release Claim Baseline Card -->
-                    <div v-if="report.last_payment_request" class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-3">
+                    <div v-if="report.last_payment_request && report.last_payment_request.id" class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-3">
                         <span class="text-[10px] font-black uppercase tracking-wider text-gray-400">Baseline Connection</span>
                         <h4 class="text-xs font-black text-gray-900">
                             Linked Fund Claim #{{ report.last_payment_request.id }} (Instalment #{{ report.last_payment_request.instalment_number }})

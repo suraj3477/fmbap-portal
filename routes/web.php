@@ -158,6 +158,10 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::get('/schemes/download-template', [SchemeController::class, 'downloadTemplate'])->name('schemes.download-template');
     Route::post('/schemes/parse-excel', [SchemeController::class, 'parseExcel'])->name('schemes.parse-excel');
     Route::post('/schemes/import-excel', [SchemeController::class, 'importExcel'])->name('schemes.import-excel');
+    Route::get('/schemes/{scheme}', function ($scheme) {
+        $schemeModel = \App\Models\Scheme::find($scheme);
+        return redirect()->route('schemes.index', ['search' => $schemeModel ? $schemeModel->scheme_code : $scheme]);
+    })->name('schemes.show');
 
     // Scheme Catalogue API
     Route::get('/api/schemes/search', [SchemeController::class, 'apiSearch'])->name('schemes.search');
