@@ -41,8 +41,8 @@ class ProgressReportController extends Controller
 
         $stats = [
             'total_reports'          => $allUserReports->count(),
-            'approved_count'         => $allUserReports->whereIn('status', [ProgressReport::STATUS_APPROVED, ProgressReport::STATUS_REVIEWED_BY_MOJS])->count(),
-            'under_review_count'     => $allUserReports->whereIn('status', [ProgressReport::STATUS_SUBMITTED, ProgressReport::STATUS_REVIEWED_BY_BB])->count(),
+            'approved_count'         => $allUserReports->whereIn('status', [ProgressReport::STATUS_APPROVED, ProgressReport::STATUS_REVIEWED_BY_MOJS, ProgressReport::STATUS_REVIEWED_BY_BB])->count(),
+            'under_review_count'     => $allUserReports->where('status', ProgressReport::STATUS_SUBMITTED)->count(),
             'needs_correction_count' => $allUserReports->where('status', ProgressReport::STATUS_NEEDS_CORRECTION)->count(),
             'avg_physical_progress'  => $allUserReports->count() > 0 ? round($allUserReports->avg('physical_progress_pct'), 1) : 0,
         ];
@@ -425,7 +425,7 @@ class ProgressReportController extends Controller
     }
 
     /**
-     * Brahmaputra Board Technical Review.
+     * Brahmaputra Board Technical Inspection & Submission to MoJS.
      */
     public function bbReview(Request $request, ProgressReport $progress_report)
     {
@@ -434,16 +434,31 @@ class ProgressReportController extends Controller
         }
 
         $validated = $request->validate([
-            'decision' => 'required|in:REVIEWED_BY_BB,NEEDS_CORRECTION',
-            'remarks'  => 'required|string',
+            'decision'       => 'required|in:REVIEWED_BY_BB,NEEDS_CORRECTION',
+            'remarks'        => 'required|string',
+            'inspection_doc' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:20480',
         ]);
 
         $progress_report->status = $validated['decision'];
         $progress_report->bb_remarks = $validated['remarks'];
         $progress_report->bb_reviewed_at = now();
+
+        if ($request->hasFile('inspection_doc')) {
+            $progress_report->bb_inspection_doc_path = '/storage/' . $request->file('inspection_doc')->store('bb_inspections', 'public');
+        }
+
+        if ($validated['decision'] === 'REVIEWED_BY_BB' && $progress_report->scheme) {
+            $progressPct = (float) $progress_report->physical_progress_pct;
+            $schemeData = ['physical_progress_pct' => $progressPct];
+            if ($progressPct >= 100) {
+                $schemeData['physical_status'] = 'Completed';
+            }
+            $progress_report->scheme->update($schemeData);
+        }
+
         $progress_report->save();
 
-        return redirect()->back()->with('success', 'Brahmaputra Board technical review recorded.');
+        return redirect()->back()->with('success', 'Brahmaputra Board Inspection Report submitted to MoJS successfully.');
     }
 
     /**

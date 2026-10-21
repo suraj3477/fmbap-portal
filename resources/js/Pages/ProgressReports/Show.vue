@@ -23,28 +23,27 @@ const isMoJS = computed(() => props.userRole === 'mojs_official' || props.userRo
 const isState = computed(() => props.userRole === 'state_official' || props.userRole === 'super_admin');
 
 const showDecisionModal = ref(false);
-const decisionType = ref('');
+const decisionType = ref('REVIEWED_BY_BB');
 const activePhoto = ref(null);
 
 const decisionForm = useForm({
-    decision: '',
+    decision: 'REVIEWED_BY_BB',
     remarks: '',
+    inspection_doc: null,
 });
 
 const openDecisionModal = (type) => {
     decisionType.value = type;
     decisionForm.decision = type;
     decisionForm.remarks = '';
+    decisionForm.inspection_doc = null;
     showDecisionModal.value = true;
 };
 
 const submitDecision = () => {
-    const routeName = isBB.value && props.report.status === 'SUBMITTED'
-        ? 'progress-reports.bbReview'
-        : 'progress-reports.mojsReview';
-
-    decisionForm.post(route(routeName, props.report.id), {
+    decisionForm.post(route('progress-reports.bbReview', props.report.id), {
         preserveScroll: true,
+        forceFormData: true,
         onSuccess: () => {
             showDecisionModal.value = false;
         },
@@ -55,15 +54,15 @@ const getStatusBadge = (status) => {
     switch (status) {
         case 'APPROVED':
         case 'REVIEWED_BY_MOJS':
-            return { label: status === 'APPROVED' ? 'Approved by MoJS' : 'MoJS Verified', class: 'bg-emerald-50 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' };
+            return { label: 'Verified & Approved', class: 'bg-emerald-50 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' };
         case 'REVIEWED_BY_BB':
-            return { label: 'Brahmaputra Board Reviewed', class: 'bg-indigo-50 text-indigo-800 border-indigo-300', dot: 'bg-indigo-500' };
+            return { label: 'BB Inspected & Submitted to MoJS', class: 'bg-emerald-50 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' };
         case 'SUBMITTED':
-            return { label: 'Submitted (Pending BB Review)', class: 'bg-blue-50 text-blue-800 border-blue-300', dot: 'bg-blue-500' };
+            return { label: 'Submitted (Pending BB Inspection)', class: 'bg-blue-50 text-blue-800 border-blue-300', dot: 'bg-blue-500' };
         case 'NEEDS_CORRECTION':
             return { label: 'Needs Correction', class: 'bg-amber-50 text-amber-900 border-amber-300', dot: 'bg-amber-500' };
         default:
-            return { label: status || 'Pending', class: 'bg-gray-50 text-gray-800 border-gray-300', dot: 'bg-gray-400' };
+            return { label: status || 'Submitted', class: 'bg-gray-50 text-gray-800 border-gray-300', dot: 'bg-gray-400' };
     }
 };
 
@@ -430,66 +429,69 @@ const parsedMedia = computed(() => {
                 <!-- SIDEBAR: Progression Curve, Baseline & Review Actions -->
                 <div class="space-y-6">
 
-                    <!-- Review Actions Panel -->
+                    <!-- Technical Review & BB Inspection Panel -->
                     <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-5 space-y-4">
                         <h3 class="font-extrabold text-sm text-gray-900 border-b border-gray-100 pb-3 flex items-center justify-between">
-                            <span>Technical Review &amp; Actions</span>
-                            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-gray-100 text-gray-600 font-bold">
-                                {{ report.status }}
+                            <span>BB Technical Inspection</span>
+                            <span :class="badge.class" class="text-[10px] font-mono px-2 py-0.5 rounded font-bold border">
+                                {{ badge.label }}
                             </span>
                         </h3>
 
-                        <!-- If BB Official & Submitted -->
-                        <div v-if="isBB && report.status === 'SUBMITTED'" class="space-y-2">
+                        <!-- Inspected & Submitted to MoJS -->
+                        <div v-if="report.status === 'REVIEWED_BY_BB' || report.status === 'APPROVED' || report.bb_reviewed_at" class="space-y-3">
+                            <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2">
+                                <span class="text-base">✅</span>
+                                <span>BB Inspection Report Submitted to MoJS</span>
+                            </div>
+
+                            <div v-if="report.bb_remarks" class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 space-y-1">
+                                <span class="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
+                                    Inspection Findings / Observations
+                                </span>
+                                <p class="leading-relaxed whitespace-pre-line">{{ report.bb_remarks }}</p>
+                            </div>
+
+                            <div v-if="report.bb_inspection_doc_path" class="pt-1">
+                                <a
+                                    :href="report.bb_inspection_doc_path"
+                                    target="_blank"
+                                    class="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-700 hover:bg-blue-50 text-xs font-bold transition shadow-2xs"
+                                >
+                                    <span>📑</span>
+                                    <span>Download BB Inspection Document</span>
+                                </a>
+                            </div>
+
+                            <div v-if="report.bb_reviewed_at" class="text-[11px] text-gray-500 flex items-center justify-between pt-2 border-t border-gray-100">
+                                <span>Inspected Date:</span>
+                                <strong class="text-gray-800">{{ formatDate(report.bb_reviewed_at) }}</strong>
+                            </div>
+                        </div>
+
+                        <!-- If BB Official & Still Pending Inspection (SUBMITTED) -->
+                        <div v-else-if="isBB && report.status === 'SUBMITTED'" class="space-y-2.5">
                             <p class="text-xs text-gray-600">
-                                Brahmaputra Board official review of monthly site execution.
+                                Brahmaputra Board field verification of monthly site execution. Record observations and forward directly to MoJS.
                             </p>
                             <button
                                 @click="openDecisionModal('REVIEWED_BY_BB')"
-                                class="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-xs transition"
+                                class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
                             >
-                                ✅ Technical Review Satisfactory &amp; Forward
+                                <span>✅</span>
+                                <span>Submit BB Inspection Report to MoJS</span>
                             </button>
                             <button
                                 @click="openDecisionModal('NEEDS_CORRECTION')"
-                                class="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs transition"
+                                class="w-full py-2 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs transition cursor-pointer"
                             >
                                 ⚠️ Request State Correction
                             </button>
                         </div>
 
-                        <!-- If MoJS Official & BB Reviewed -->
-                        <div v-else-if="isMoJS && report.status === 'REVIEWED_BY_BB'" class="space-y-2">
-                            <p class="text-xs text-gray-600">
-                                Ministry (MoJS) final statutory approval of monthly report.
-                            </p>
-                            <button
-                                @click="openDecisionModal('APPROVED')"
-                                class="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition"
-                            >
-                                ✅ Approve &amp; Affirm Scheme Progress
-                            </button>
-                            <button
-                                @click="openDecisionModal('NEEDS_CORRECTION')"
-                                class="w-full py-2.5 px-4 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs transition"
-                            >
-                                ⚠️ Reject / Ask State to Resubmit
-                            </button>
-                        </div>
-
-                        <!-- Approved State -->
-                        <div v-else-if="report.status === 'APPROVED' || report.status === 'REVIEWED_BY_MOJS'" class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2">
-                            <span>✅</span>
-                            <span>Report approved &amp; permanently synced to Scheme progression.</span>
-                        </div>
-
-                        <!-- Awaiting BB Review -->
-                        <div v-else-if="report.status === 'SUBMITTED'" class="text-xs text-gray-500 italic">
-                            Report is currently undergoing technical scrutiny by Brahmaputra Board monitoring cell.
-                        </div>
-
-                        <div v-else-if="report.status === 'REVIEWED_BY_BB'" class="text-xs text-indigo-700 font-medium">
-                            BB technical scrutiny completed. Awaiting final MoJS affirmation.
+                        <!-- If Pending BB Inspection for other users -->
+                        <div v-else-if="report.status === 'SUBMITTED'" class="text-xs text-gray-500 italic py-2">
+                            Monthly progress report submitted by State. Under routine scrutiny by Brahmaputra Board.
                         </div>
                     </div>
 
@@ -600,32 +602,47 @@ const parsedMedia = computed(() => {
             @click="showDecisionModal = false"
         >
             <div class="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4" @click.stop>
-                <h3 class="font-extrabold text-base text-gray-900">
-                    Record {{ isBB ? 'Brahmaputra Board' : 'Ministry (MoJS)' }} Review Decision
-                </h3>
-
-                <p class="text-xs text-gray-500">
-                    Decision: <strong class="text-gray-900">{{ decisionType }}</strong>
-                </p>
+                <div class="border-b border-gray-100 pb-3">
+                    <h3 class="font-extrabold text-base text-gray-900">
+                        {{ decisionType === 'REVIEWED_BY_BB' ? 'Submit BB Inspection Report to MoJS' : 'Request State Correction' }}
+                    </h3>
+                    <p class="text-xs text-gray-500 mt-0.5">
+                        {{ decisionType === 'REVIEWED_BY_BB' 
+                            ? 'Record technical field observations and forward verified progress to Ministry (MoJS).' 
+                            : 'Specify discrepancies observed for the State Agency to amend and resubmit.' }}
+                    </p>
+                </div>
 
                 <div>
                     <label class="block text-xs font-black text-gray-700 mb-1">
-                        Official Scrutiny Remarks <span class="text-rose-500">*</span>
+                        {{ decisionType === 'REVIEWED_BY_BB' ? 'Field Inspection Observations & Findings' : 'Reason for Correction' }} <span class="text-rose-500">*</span>
                     </label>
                     <textarea
                         v-model="decisionForm.remarks"
                         rows="4"
-                        placeholder="Enter technical scrutiny remarks, ground verification notes, or reason for correction..."
+                        :placeholder="decisionType === 'REVIEWED_BY_BB' ? 'Enter site inspection remarks, quality of civil works, physical verification notes...' : 'Specify what details or documents need correction...'"
                         class="w-full rounded-xl border-gray-300 text-xs focus:border-[#0F4C9F] focus:ring-[#0F4C9F]"
                         required
                     ></textarea>
+                </div>
+
+                <div v-if="decisionType === 'REVIEWED_BY_BB'">
+                    <label class="block text-xs font-black text-gray-700 mb-1">
+                        Attach Official Inspection Report PDF (Optional)
+                    </label>
+                    <input
+                        type="file"
+                        accept=".pdf,image/*"
+                        @change="e => decisionForm.inspection_doc = e.target.files[0]"
+                        class="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-[#0F4C9F]/10 file:text-[#0F4C9F]"
+                    />
                 </div>
 
                 <div class="flex justify-end gap-3 pt-3 border-t border-gray-100">
                     <button
                         type="button"
                         @click="showDecisionModal = false"
-                        class="px-4 py-2 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50"
+                        class="px-4 py-2 rounded-xl border border-gray-300 text-xs font-bold text-gray-700 hover:bg-gray-50 cursor-pointer"
                     >
                         Cancel
                     </button>
@@ -633,9 +650,9 @@ const parsedMedia = computed(() => {
                         type="button"
                         @click="submitDecision"
                         :disabled="decisionForm.processing || !decisionForm.remarks"
-                        class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs disabled:opacity-50"
+                        class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs disabled:opacity-50 cursor-pointer"
                     >
-                        Confirm Decision
+                        {{ decisionType === 'REVIEWED_BY_BB' ? 'Submit Inspection to MoJS' : 'Send Correction Notice' }}
                     </button>
                 </div>
             </div>

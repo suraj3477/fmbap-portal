@@ -28,6 +28,7 @@ class ProgressReport extends Model
         'last_payment_request_id',
         'status',
         'bb_remarks',
+        'bb_inspection_doc_path',
         'bb_reviewed_at',
         'mojs_remarks',
         'mojs_reviewed_at',

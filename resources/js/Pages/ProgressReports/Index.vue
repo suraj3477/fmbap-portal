@@ -28,11 +28,11 @@ const perPage = 10;
 const totalCount = computed(() => props.reports.length);
 
 const approvedCount = computed(() => 
-    props.reports.filter(r => r.status === 'APPROVED' || r.status === 'REVIEWED_BY_MOJS').length
+    props.reports.filter(r => r.status === 'APPROVED' || r.status === 'REVIEWED_BY_MOJS' || r.status === 'REVIEWED_BY_BB').length
 );
 
 const underReviewCount = computed(() => 
-    props.reports.filter(r => r.status === 'SUBMITTED' || r.status === 'REVIEWED_BY_BB').length
+    props.reports.filter(r => r.status === 'SUBMITTED').length
 );
 
 const needsCorrectionCount = computed(() => 
@@ -58,10 +58,10 @@ const filteredReports = computed(() => {
         if (!matchesQuery) return false;
 
         if (statusFilter.value === 'APPROVED') {
-            return r.status === 'APPROVED' || r.status === 'REVIEWED_BY_MOJS';
+            return r.status === 'APPROVED' || r.status === 'REVIEWED_BY_MOJS' || r.status === 'REVIEWED_BY_BB';
         }
         if (statusFilter.value === 'UNDER_REVIEW') {
-            return r.status === 'SUBMITTED' || r.status === 'REVIEWED_BY_BB';
+            return r.status === 'SUBMITTED';
         }
         if (statusFilter.value === 'NEEDS_CORRECTION') {
             return r.status === 'NEEDS_CORRECTION';
@@ -102,15 +102,15 @@ const getStatusBadge = (status) => {
     switch (status) {
         case 'APPROVED':
         case 'REVIEWED_BY_MOJS':
-            return { label: status === 'APPROVED' ? 'Approved' : 'MoJS Verified', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
+            return { label: 'Verified & Approved', class: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' };
         case 'REVIEWED_BY_BB':
-            return { label: 'BB Reviewed', class: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-500' };
+            return { label: 'BB Inspected & Submitted to MoJS', class: 'bg-emerald-50 text-emerald-800 border-emerald-300', dot: 'bg-emerald-500' };
         case 'SUBMITTED':
-            return { label: 'Submitted', class: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' };
+            return { label: 'Submitted (Pending BB)', class: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' };
         case 'NEEDS_CORRECTION':
             return { label: 'Correction Req.', class: 'bg-amber-50 text-amber-800 border-amber-300', dot: 'bg-amber-500' };
         default:
-            return { label: status.replace(/_/g, ' '), class: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
+            return { label: status ? status.replace(/_/g, ' ') : 'Submitted', class: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
     }
 };
 </script>
