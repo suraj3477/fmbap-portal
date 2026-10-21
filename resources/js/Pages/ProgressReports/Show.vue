@@ -440,11 +440,6 @@ const parsedMedia = computed(() => {
 
                         <!-- Inspected & Submitted to MoJS -->
                         <div v-if="report.status === 'REVIEWED_BY_BB' || report.status === 'APPROVED' || report.bb_reviewed_at" class="space-y-3">
-                            <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2">
-                                <span class="text-base">✅</span>
-                                <span>BB Inspection Report Submitted to MoJS</span>
-                            </div>
-
                             <div v-if="report.bb_remarks" class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 space-y-1">
                                 <span class="text-[11px] font-black uppercase tracking-wider text-slate-500 block">
                                     Inspection Findings / Observations
