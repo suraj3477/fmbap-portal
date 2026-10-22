@@ -420,6 +420,7 @@ class PaymentRequestController extends Controller
         $validated = $request->validate([
             'decision'             => 'required|in:APPROVED,NEEDS_CORRECTION,REJECTED',
             'remarks'              => 'required|string',
+            'approved_amount_lakh' => 'nullable|numeric|min:0',
             'approved_amount_cr'   => 'nullable|numeric|min:0',
             'curtailment_reason'   => 'nullable|string',
             'sanction_order_no'    => 'nullable|string',
@@ -435,9 +436,13 @@ class PaymentRequestController extends Controller
             $fund_release->approved_at = now();
 
             $requested = (float) $fund_release->requested_amount_cr;
-            $approved = (isset($validated['approved_amount_cr']) && $validated['approved_amount_cr'] !== null && $validated['approved_amount_cr'] !== '')
-                ? (float) $validated['approved_amount_cr']
-                : $requested;
+            if (isset($validated['approved_amount_lakh']) && $validated['approved_amount_lakh'] !== null && $validated['approved_amount_lakh'] !== '') {
+                $approved = round((float) $validated['approved_amount_lakh'] / 100, 4);
+            } elseif (isset($validated['approved_amount_cr']) && $validated['approved_amount_cr'] !== null && $validated['approved_amount_cr'] !== '') {
+                $approved = (float) $validated['approved_amount_cr'];
+            } else {
+                $approved = $requested;
+            }
 
             $fund_release->approved_amount_cr = $approved;
             $deduction = max(0, round($requested - $approved, 2));
@@ -489,12 +494,21 @@ class PaymentRequestController extends Controller
 
         $fund_release->save();
 
+        $approvedLakh = round(((float)$fund_release->approved_amount_cr) * 100, 2);
         $actionLabel = $validated['decision'] === 'NEEDS_CORRECTION' 
             ? 'MoJS Sent Back for Correction' 
             : ($validated['decision'] === 'APPROVED' 
-                ? 'MoJS Sanctioned & Released (₹' . number_format($fund_release->approved_amount_cr, 2) . ' Cr)' 
+                ? 'MoJS Sanctioned & Released (₹' . $approvedLakh . ' Lakh / ₹' . number_format($fund_release->approved_amount_cr, 2) . ' Cr)' 
                 : 'MoJS Decision: ' . str_replace('_', ' ', $validated['decision']));
-        $fund_release->createRevisionSnapshot($actionLabel);
+        $fund_release->createRevisionSnapshot($actionLabel, auth()->user(), [
+            'approved_amount_cr'  => $fund_release->approved_amount_cr,
+            'deduction_amount_cr' => $fund_release->deduction_amount_cr,
+            'curtailment_reason'  => $fund_release->curtailment_reason,
+            'sanction_order_no'   => $fund_release->sanction_order_no,
+            'sanction_order_date' => $fund_release->sanction_order_date,
+            'mojs_decision'       => $fund_release->mojs_decision,
+            'mojs_remarks'        => $fund_release->mojs_remarks,
+        ]);
 
         return redirect()->back()->with('success', 'MoJS decision recorded.');
     }
