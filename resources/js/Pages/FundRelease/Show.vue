@@ -227,20 +227,23 @@ const submitDecision = () => {
                                     </p>
                                 </div>
 
-                                <!-- Stage 2: BB Recommended -->
+                                <!-- Stage 2: BB Field Inspection -->
                                 <div class="p-4 rounded-xl border border-indigo-100 bg-indigo-50/50">
                                     <div class="flex items-center justify-between mb-1">
-                                        <span class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">2. BB Scrutiny</span>
+                                        <span class="text-[10px] font-bold text-indigo-700 uppercase tracking-wider">2. BB Field Inspection</span>
                                         <span 
                                             class="text-[10px] font-semibold px-2 py-0.5 rounded"
-                                            :class="payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'"
+                                            :class="bb_monitoring_report?.report?.status === 'SUBMITTED' || ['FORWARDED_TO_MOJS', 'APPROVED'].includes(payment_request.status) ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-500'"
                                         >
-                                            Recommended
+                                            {{ bb_monitoring_report?.report?.status === 'SUBMITTED' || ['FORWARDED_TO_MOJS', 'APPROVED'].includes(payment_request.status) ? 'Inspected' : 'Pending Inspection' }}
                                         </span>
                                     </div>
                                     <div class="text-xl font-black text-indigo-950 font-mono">
-                                        <span v-if="payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr">
-                                            ₹{{ payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr }} <span class="text-xs font-sans text-indigo-700 font-semibold">Cr</span>
+                                        <span v-if="bb_monitoring_report?.report?.bb_physical_progress_pct !== undefined && bb_monitoring_report?.report?.bb_physical_progress_pct !== null">
+                                            {{ bb_monitoring_report.report.bb_physical_progress_pct }}% <span class="text-xs font-sans text-indigo-700 font-semibold">Physical</span>
+                                        </span>
+                                        <span v-else-if="payment_request.bb_recommended_amount_cr">
+                                            ₹{{ payment_request.bb_recommended_amount_cr }} <span class="text-xs font-sans text-indigo-700 font-semibold">Cr</span>
                                         </span>
                                         <span v-else class="text-sm font-bold text-slate-400 font-sans italic">
                                             Pending Inspection
@@ -706,9 +709,9 @@ const submitDecision = () => {
                                 <span class="text-base font-black text-blue-900 font-mono">₹{{ payment_request.requested_amount_cr || '0.00' }} Cr</span>
                             </div>
                             <div>
-                                <span class="text-slate-500 block font-semibold uppercase text-[10px]">BB Recommended Release</span>
+                                <span class="text-slate-500 block font-semibold uppercase text-[10px]">BB Inspection Status</span>
                                 <span class="text-base font-black text-indigo-900 font-mono">
-                                    ₹{{ payment_request.bb_recommended_amount_cr || bb_monitoring_report?.report?.bb_recommended_amount_cr || payment_request.requested_amount_cr }} Cr
+                                    {{ bb_monitoring_report?.report?.bb_physical_progress_pct ? bb_monitoring_report.report.bb_physical_progress_pct + '% Physical' : (payment_request.bb_recommended_amount_cr ? '₹' + payment_request.bb_recommended_amount_cr + ' Cr' : 'Inspected & Forwarded') }}
                                 </span>
                             </div>
                         </div>
