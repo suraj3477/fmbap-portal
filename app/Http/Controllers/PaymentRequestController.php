@@ -38,6 +38,21 @@ class PaymentRequestController extends Controller
 
         $preselectedSchemeId = $request->query('scheme_id');
 
+        if ($preselectedSchemeId) {
+            $targetScheme = Scheme::find($preselectedSchemeId);
+            if ($targetScheme && $targetScheme->hasActiveClaim()) {
+                $activeClaim = $targetScheme->getActiveClaim();
+                if ($activeClaim) {
+                    if (in_array($activeClaim->status, [PaymentRequest::STATUS_DRAFT, PaymentRequest::STATUS_NEEDS_CORRECTION])) {
+                        return redirect()->route('fund-release.edit', $activeClaim->id)
+                            ->with('warning', "Scheme {$targetScheme->scheme_code} already has Claim #{$activeClaim->id} (Instalment #{$activeClaim->instalment_number}) in progress. Please continue editing this claim.");
+                    }
+                    return redirect()->route('fund-release.show', $activeClaim->id)
+                        ->with('warning', "Scheme {$targetScheme->scheme_code} already has an active claim #{$activeClaim->id} (Instalment #{$activeClaim->instalment_number}) under review ({$activeClaim->status}). Under FMBAP rules, only one active fund claim is permitted at a time until fulfilled.");
+                }
+            }
+        }
+
         $availableSchemes = Scheme::active()
             ->with([
                 'fmbapProject',
@@ -129,22 +144,43 @@ class PaymentRequestController extends Controller
                 $query->where('state', $user->state);
             }
             $paymentRequest = $query->firstOrFail();
+
+            // Prevent switching scheme to another scheme that already has an active claim
+            if ($validated['step'] == 1 && !empty($validated['scheme_id']) && (int)$validated['scheme_id'] !== (int)$paymentRequest->scheme_id) {
+                $targetScheme = Scheme::find($validated['scheme_id']);
+                if ($targetScheme) {
+                    $otherActiveClaim = $targetScheme->paymentRequests()
+                        ->whereNotIn('status', [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED])
+                        ->where('id', '!=', $paymentRequest->id)
+                        ->first();
+                    if ($otherActiveClaim) {
+                        return response()->json([
+                            'message' => "Scheme {$targetScheme->scheme_code} already has an active fund claim (#{$otherActiveClaim->id} - Instalment #{$otherActiveClaim->instalment_number}, {$otherActiveClaim->status}) in progress. Only one active claim is permitted at a time.",
+                            'active_claim_id' => $otherActiveClaim->id,
+                        ], 422);
+                    }
+                }
+            }
         } else {
             // Require scheme for new request
             $request->validate(['scheme_id' => 'required|exists:schemes,id']);
-            
-            // Check if an existing blank DRAFT already exists for this user and scheme before creating a new one
-            $existingDraft = PaymentRequest::where('user_id', $user->id)
-                ->where('scheme_id', $validated['scheme_id'])
-                ->where('status', PaymentRequest::STATUS_DRAFT)
-                ->where(function ($q) {
-                    $q->whereNull('requested_amount_cr')->orWhere('requested_amount_cr', 0);
-                })
-                ->latest()
+
+            $targetScheme = Scheme::findOrFail($validated['scheme_id']);
+            $existingActive = $targetScheme->paymentRequests()
+                ->whereNotIn('status', [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED])
+                ->latest('id')
                 ->first();
 
-            if ($existingDraft) {
-                $paymentRequest = $existingDraft;
+            if ($existingActive) {
+                // If it's a blank draft created by the same user, allow reusing it
+                if ($existingActive->status === PaymentRequest::STATUS_DRAFT && (!$existingActive->requested_amount_cr || (float)$existingActive->requested_amount_cr == 0) && $existingActive->user_id === $user->id) {
+                    $paymentRequest = $existingActive;
+                } else {
+                    return response()->json([
+                        'message' => "Scheme {$targetScheme->scheme_code} already has an active claim (#{$existingActive->id} - Instalment #{$existingActive->instalment_number}, {$existingActive->status}) in progress. A new fund claim cannot be initiated until the current request is fulfilled or resolved.",
+                        'active_claim_id' => $existingActive->id,
+                    ], 422);
+                }
             } else {
                 $paymentRequest = PaymentRequest::create([
                     'user_id'   => $user->id,
@@ -240,6 +276,18 @@ class PaymentRequestController extends Controller
             }
 
             if ($validated['is_final_submit'] ?? false) {
+                // Ensure no other active claim is in progress for this scheme
+                $otherActive = PaymentRequest::where('scheme_id', $paymentRequest->scheme_id)
+                    ->where('id', '!=', $paymentRequest->id)
+                    ->whereNotIn('status', [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED])
+                    ->first();
+
+                if ($otherActive) {
+                    return response()->json([
+                        'message' => "Another active claim (#{$otherActive->id} - Instalment #{$otherActive->instalment_number}, {$otherActive->status}) is currently in progress for this scheme. Only one active claim is permitted at a time until fulfilled.",
+                    ], 422);
+                }
+
                 // Ensure UC is present on final submit
                 if (!$paymentRequest->utilization_certificate_path && !$request->hasFile('utilization_certificate')) {
                     return response()->json(['message' => 'Utilization Certificate is required for final submission.'], 422);

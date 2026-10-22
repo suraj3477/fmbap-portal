@@ -848,12 +848,30 @@ const submitManualScheme = () => {
                                                     </h4>
                                                 </div>
                                                 <div v-if="['state_official', 'super_admin'].includes(user?.role)" class="flex items-center gap-2">
-                                                    <Link
-                                                        :href="route('fund-release.create', { scheme_id: scheme.id })"
-                                                        class="px-3 py-1.5 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1"
-                                                    >
-                                                        <span>⚡</span> Initiate Fund Claim
-                                                    </Link>
+                                                    <template v-if="scheme.has_active_claim && scheme.active_claim">
+                                                        <Link
+                                                            :href="route('fund-release.show', scheme.active_claim.id)"
+                                                            class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1.5"
+                                                            :title="'Claim #' + scheme.active_claim.id + ' is already under processing (' + (scheme.active_claim.status || '').replace(/_/g, ' ') + '). Only one active claim allowed at a time until fulfilled.'"
+                                                        >
+                                                            <span>⏳</span> Claim #{{ scheme.active_claim.id }} in Progress ({{ (scheme.active_claim.status || '').replace(/_/g, ' ') }})
+                                                        </Link>
+                                                        <Link
+                                                            v-if="['DRAFT', 'NEEDS_CORRECTION'].includes(scheme.active_claim.status)"
+                                                            :href="route('fund-release.edit', scheme.active_claim.id)"
+                                                            class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1"
+                                                        >
+                                                            <span>✏️</span> Resume/Edit
+                                                        </Link>
+                                                    </template>
+                                                    <template v-else>
+                                                        <Link
+                                                            :href="route('fund-release.create', { scheme_id: scheme.id })"
+                                                            class="px-3 py-1.5 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1"
+                                                        >
+                                                            <span>⚡</span> Initiate Fund Claim (Instalment #{{ scheme.next_suggested_instalment || 1 }})
+                                                        </Link>
+                                                    </template>
                                                 </div>
                                             </div>
 

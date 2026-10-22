@@ -156,6 +156,9 @@ const selectScheme = (scheme) => {
                         <span v-if="scheme.plan_period" class="text-[11px] px-1.5 py-0.2 bg-gray-100 text-gray-600 rounded">
                             {{ scheme.plan_period }}
                         </span>
+                        <span v-if="scheme.has_active_claim" class="text-[10px] px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                            ⏳ Active Claim #{{ scheme.active_claim?.id }} ({{ (scheme.active_claim?.status || '').replace(/_/g, ' ') }})
+                        </span>
                     </div>
                     <p class="text-xs text-gray-800 font-medium line-clamp-1 group-hover:text-blue-900">
                         {{ scheme.scheme_name }}

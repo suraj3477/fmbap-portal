@@ -167,7 +167,42 @@ class Scheme extends Model
         $maxInstalment = $approvedPrs->max('instalment_number');
         $this->next_suggested_instalment = $maxInstalment ? ($maxInstalment + 1) : 1;
 
+        // Check if there is an active, unfulfilled claim in progress (single claim check)
+        $activeClaim = $prs->first(function ($pr) {
+            return !in_array($pr->status, [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED]);
+        });
+        $this->has_active_claim = (bool) $activeClaim;
+        $this->active_claim = $activeClaim ? [
+            'id'                  => $activeClaim->id,
+            'instalment_number'   => $activeClaim->instalment_number,
+            'status'              => $activeClaim->status,
+            'status_label'        => ucwords(strtolower(str_replace('_', ' ', $activeClaim->status))),
+            'requested_amount_cr' => (float) $activeClaim->requested_amount_cr,
+            'submitted_at'        => $activeClaim->submitted_at ? \Carbon\Carbon::parse($activeClaim->submitted_at)->format('d M Y') : null,
+        ] : null;
+
         return $this;
+    }
+
+    /**
+     * Check if this scheme has an active, unfulfilled fund claim currently under processing.
+     */
+    public function hasActiveClaim(): bool
+    {
+        return $this->paymentRequests()
+            ->whereNotIn('status', [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED])
+            ->exists();
+    }
+
+    /**
+     * Get the active, unfulfilled fund claim if any.
+     */
+    public function getActiveClaim(): ?PaymentRequest
+    {
+        return $this->paymentRequests()
+            ->whereNotIn('status', [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED])
+            ->latest('id')
+            ->first();
     }
 }
 

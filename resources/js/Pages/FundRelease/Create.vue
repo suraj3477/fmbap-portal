@@ -266,9 +266,17 @@ const handleFileUpload = (event, field, isMultiple = false) => {
 };
 
 const saveStep = async (isFinalSubmit = false) => {
-    if (currentStep.value === 1 && !form.value.scheme_id) {
-        errorMsg.value = 'Please select a scheme from the list or search box before proceeding.';
-        return;
+    if (currentStep.value === 1) {
+        if (!form.value.scheme_id) {
+            errorMsg.value = 'Please select a scheme from the list or search box before proceeding.';
+            return;
+        }
+        if (form.value.selected_scheme?.has_active_claim) {
+            const claim = form.value.selected_scheme.active_claim;
+            const statusText = claim?.status ? claim.status.replace(/_/g, ' ') : 'IN PROGRESS';
+            errorMsg.value = `Scheme ${form.value.selected_scheme.scheme_code} already has an active fund claim (#${claim?.id || ''} - ${statusText}) in progress. Only one active claim is permitted at a time until fulfilled.`;
+            return;
+        }
     }
 
     isSubmitting.value = true;
@@ -415,9 +423,14 @@ const saveStep = async (isFinalSubmit = false) => {
                                     ]"
                                 >
                                     <div class="flex items-start justify-between gap-2 mb-1.5">
-                                        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-blue-100 text-blue-800">
-                                            {{ s.scheme_code }}
-                                        </span>
+                                        <div class="flex items-center gap-1.5 flex-wrap">
+                                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-bold font-mono bg-blue-100 text-blue-800">
+                                                {{ s.scheme_code }}
+                                            </span>
+                                            <span v-if="s.has_active_claim" class="text-[9px] px-1.5 py-0.2 rounded font-bold bg-amber-100 text-amber-800 border border-amber-300">
+                                                Active Claim
+                                            </span>
+                                        </div>
                                         <span class="text-xs font-extrabold text-gray-900">
                                             ₹{{ s.sanctioned_amount_cr || (s.estimated_cost_lakh ? (s.estimated_cost_lakh/100).toFixed(2) : '0.00') }} Cr
                                         </span>
@@ -444,7 +457,10 @@ const saveStep = async (isFinalSubmit = false) => {
                                         Selected Scheme Dossier
                                     </span>
                                 </div>
-                                <span class="text-xs font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                <span v-if="form.selected_scheme.has_active_claim" class="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span> Claim In Progress
+                                </span>
+                                <span v-else class="text-xs font-semibold text-emerald-700 bg-emerald-100/70 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center gap-1">
                                     <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Ready for Financial Claim
                                 </span>
                             </div>
@@ -474,6 +490,39 @@ const saveStep = async (isFinalSubmit = false) => {
                                     <span class="font-bold text-emerald-700">
                                         ₹{{ (parseFloat(form.released_central_share_cr) + parseFloat(form.released_state_share_cr)).toFixed(2) }} Cr
                                     </span>
+                                </div>
+                            </div>
+
+                            <!-- Prominent Alert Banner for Active Claim -->
+                            <div v-if="form.selected_scheme.has_active_claim" class="mt-4 p-4 bg-amber-50 border-2 border-amber-400 rounded-xl space-y-2">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-2xl select-none">⚠️</span>
+                                    <div class="flex-1">
+                                        <h4 class="text-xs sm:text-sm font-extrabold text-amber-900">
+                                            Single Active Claim Rule: Claim #{{ form.selected_scheme.active_claim?.id }} (Instalment #{{ form.selected_scheme.active_claim?.instalment_number }}) is currently in progress
+                                        </h4>
+                                        <p class="text-xs text-amber-800 mt-1 leading-relaxed">
+                                            State users can submit <strong>only one active fund claim at a time</strong> per scheme. 
+                                            Claim <strong>#{{ form.selected_scheme.active_claim?.id }}</strong> has status <span class="font-bold underline">{{ (form.selected_scheme.active_claim?.status || '').replace(/_/g, ' ') }}</span>.
+                                            A new claim cannot be initiated until the current claim is fulfilled (sanctioned & released by MoJS) or rejected.
+                                        </p>
+                                        <div class="mt-3 flex flex-wrap items-center gap-2">
+                                            <a 
+                                                :href="route('fund-release.show', form.selected_scheme.active_claim?.id)"
+                                                target="_blank"
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-700 hover:bg-amber-800 text-white rounded text-xs font-bold shadow-xs transition"
+                                            >
+                                                <span>📄</span> View Active Claim Dossier (#{{ form.selected_scheme.active_claim?.id }}) ↗
+                                            </a>
+                                            <a 
+                                                v-if="['DRAFT', 'NEEDS_CORRECTION'].includes(form.selected_scheme.active_claim?.status)"
+                                                :href="route('fund-release.edit', form.selected_scheme.active_claim?.id)"
+                                                class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-xs font-bold shadow-xs transition"
+                                            >
+                                                <span>✏️</span> Resume / Rectify Claim ↗
+                                            </a>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -987,8 +1036,9 @@ const saveStep = async (isFinalSubmit = false) => {
 
                         <button 
                             type="submit" 
-                            class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2"
-                            :disabled="isSubmitting || (currentStep === 1 && !form.scheme_id)"
+                            class="px-6 py-2.5 bg-blue-600 text-white rounded-xl font-bold shadow-md hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                            :disabled="isSubmitting || (currentStep === 1 && (!form.scheme_id || form.selected_scheme?.has_active_claim))"
+                            :title="currentStep === 1 && form.selected_scheme?.has_active_claim ? 'Cannot proceed: scheme already has an active claim in progress.' : ''"
                         >
                             <span v-if="isSubmitting" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                             <span>{{ currentStep === 4 ? 'Submit to Brahmaputra Board →' : 'Save & Continue →' }}</span>

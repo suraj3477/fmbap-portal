@@ -89,6 +89,24 @@ class SchemeController extends Controller
             $scheme->latest_sanction_order_date = $latestSanctionedPr?->sanction_order_date;
             $scheme->latest_sanction_order_doc_path = $latestSanctionedPr?->sanction_order_doc_path;
 
+            // Single active claim check: check if there is an unfulfilled claim in progress
+            $allPrs = $scheme->paymentRequests ?: collect();
+            $activeClaim = $allPrs->first(function ($pr) {
+                return !in_array($pr->status, ['APPROVED', 'REJECTED']);
+            });
+            $scheme->has_active_claim = (bool) $activeClaim;
+            $scheme->active_claim = $activeClaim ? [
+                'id'                  => $activeClaim->id,
+                'instalment_number'   => $activeClaim->instalment_number,
+                'status'              => $activeClaim->status,
+                'status_label'        => ucwords(strtolower(str_replace('_', ' ', $activeClaim->status))),
+                'requested_amount_cr' => (float) $activeClaim->requested_amount_cr,
+                'submitted_at'        => $activeClaim->submitted_at ? \Carbon\Carbon::parse($activeClaim->submitted_at)->format('d M Y') : null,
+            ] : null;
+
+            $maxInstalment = $approvedPrs->max('instalment_number');
+            $scheme->next_suggested_instalment = $maxInstalment ? ($maxInstalment + 1) : 1;
+
             $totalReleasedCr += $releasedDisplay;
             $totalCurtailedCr += $curtailedSum;
         }
