@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import AmountInWords from '@/Components/AmountInWords.vue';
 
 const props = defineProps({
     project: Object,
@@ -177,13 +178,15 @@ const handleDocumentUpload = () => {
                                     type="number" 
                                     step="0.01" 
                                     :disabled="!isBoardOrAdmin"
-                                    class="mt-1 w-full border-gray-300 rounded-md text-sm disabled:bg-gray-100 disabled:cursor-not-allowed" 
+                                    class="mt-1 w-full border-gray-300 rounded-md text-sm font-semibold disabled:bg-gray-100 disabled:cursor-not-allowed" 
                                 />
+                                <AmountInWords :amount="updateForm.funds_released_cr ? updateForm.funds_released_cr * 10000000 : 0" label="Released in Words" />
                             </div>
 
                             <div>
                                 <label class="block text-xs font-bold text-gray-700 uppercase">Utilized Amount (₹ Cr)</label>
-                                <input v-model="updateForm.funds_utilized_cr" type="number" step="0.01" class="mt-1 w-full border-gray-300 rounded-md text-sm" />
+                                <input v-model="updateForm.funds_utilized_cr" type="number" step="0.01" class="mt-1 w-full border-gray-300 rounded-md text-sm font-semibold" />
+                                <AmountInWords :amount="updateForm.funds_utilized_cr ? updateForm.funds_utilized_cr * 10000000 : 0" label="Utilized in Words" />
                             </div>
                         </div>
 

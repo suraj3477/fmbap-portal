@@ -106,6 +106,7 @@ class PaymentRequestController extends Controller
             // Step 1
             'scheme_id'                      => 'nullable|exists:schemes,id',
             // Step 2
+            'requested_amount_inr'           => 'nullable|numeric|min:0',
             'requested_amount_cr'            => 'nullable|numeric|min:0',
             'instalment_number'              => 'nullable|integer',
             'bank_details'                   => 'nullable|string',
@@ -197,7 +198,11 @@ class PaymentRequestController extends Controller
         }
 
         if ($validated['step'] == 2) {
-            $paymentRequest->requested_amount_cr = $validated['requested_amount_cr'] ?? 0;
+            if (isset($validated['requested_amount_inr']) && $validated['requested_amount_inr'] !== null && $validated['requested_amount_inr'] !== '') {
+                $paymentRequest->requested_amount_cr = round((float) $validated['requested_amount_inr'] / 10000000, 4);
+            } else {
+                $paymentRequest->requested_amount_cr = $validated['requested_amount_cr'] ?? 0;
+            }
             $paymentRequest->instalment_number   = $validated['instalment_number'];
             $paymentRequest->bank_details        = $validated['bank_details'];
             $paymentRequest->state_remarks       = $validated['state_remarks'];
@@ -420,6 +425,7 @@ class PaymentRequestController extends Controller
         $validated = $request->validate([
             'decision'             => 'required|in:APPROVED,NEEDS_CORRECTION,REJECTED',
             'remarks'              => 'required|string',
+            'approved_amount_inr'  => 'nullable|numeric|min:0',
             'approved_amount_lakh' => 'nullable|numeric|min:0',
             'approved_amount_cr'   => 'nullable|numeric|min:0',
             'curtailment_reason'   => 'nullable|string',
@@ -436,7 +442,9 @@ class PaymentRequestController extends Controller
             $fund_release->approved_at = now();
 
             $requested = (float) $fund_release->requested_amount_cr;
-            if (isset($validated['approved_amount_lakh']) && $validated['approved_amount_lakh'] !== null && $validated['approved_amount_lakh'] !== '') {
+            if (isset($validated['approved_amount_inr']) && $validated['approved_amount_inr'] !== null && $validated['approved_amount_inr'] !== '') {
+                $approved = round((float) $validated['approved_amount_inr'] / 10000000, 4);
+            } elseif (isset($validated['approved_amount_lakh']) && $validated['approved_amount_lakh'] !== null && $validated['approved_amount_lakh'] !== '') {
                 $approved = round((float) $validated['approved_amount_lakh'] / 100, 4);
             } elseif (isset($validated['approved_amount_cr']) && $validated['approved_amount_cr'] !== null && $validated['approved_amount_cr'] !== '') {
                 $approved = (float) $validated['approved_amount_cr'];

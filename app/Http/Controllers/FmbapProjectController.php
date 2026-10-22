@@ -335,6 +335,13 @@ class FmbapProjectController extends Controller
             return back()->withErrors(['message' => 'Corresponding Scheme not found. Please edit this project to register it in the master catalogue.']);
         }
 
+        if ($request->filled('requested_amount_inr')) {
+            $inr = (float) $request->input('requested_amount_inr');
+            if ($inr > 0) {
+                $request->merge(['requested_amount_cr' => round($inr / 10000000, 4)]);
+            }
+        }
+
         $validated = $request->validate([
             'instalment_number' => 'required|integer|min:1',
             'requested_amount_cr' => 'required|numeric|min:0.01',

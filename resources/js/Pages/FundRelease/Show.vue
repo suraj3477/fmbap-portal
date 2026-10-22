@@ -5,6 +5,8 @@ import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import WorkflowStatusBar from '@/Components/WorkflowStatusBar.vue';
 import AuditTimeline from '@/Components/AuditTimeline.vue';
 import GeoTaggedGallery from '@/Components/GeoTaggedGallery.vue';
+import AmountInWords from '@/Components/AmountInWords.vue';
+import { numberToWordsIndian, formatIndianCurrency, formatLakhAndCrore } from '@/Utils/numberToWords';
 
 const props = defineProps({
     dossier: {
@@ -42,6 +44,7 @@ const decisionForm = useForm({
     decision: '',
     remarks: '',
     bb_recommended_amount_cr: '',
+    approved_amount_inr: '',
     approved_amount_lakh: '',
     approved_amount_cr: '',
     curtailment_reason: '',
@@ -50,20 +53,26 @@ const decisionForm = useForm({
     sanction_order_doc: null,
 });
 
+const requestedAmountINR = computed(() => {
+    const askedCr = parseFloat(payment_request.value?.requested_amount_cr) || 0;
+    return Math.round(askedCr * 10000000);
+});
+
 const requestedAmountLakh = computed(() => {
     const asked = parseFloat(payment_request.value?.requested_amount_cr) || 0;
     const rounded = Math.round(asked * 100 * 100) / 100;
     return rounded % 1 === 0 ? rounded.toFixed(0) : rounded.toFixed(2);
 });
 
-const onApprovedLakhChange = (val) => {
-    decisionForm.approved_amount_lakh = val;
+const onApprovedINRChange = (val) => {
+    decisionForm.approved_amount_inr = val;
     const num = parseFloat(val);
     if (!isNaN(num) && num >= 0) {
-        const cr = (num / 100).toFixed(4).replace(/\.?0+$/, '');
-        decisionForm.approved_amount_cr = cr || '0';
+        decisionForm.approved_amount_cr = (num / 10000000).toFixed(4).replace(/\.?0+$/, '') || '0';
+        decisionForm.approved_amount_lakh = (num / 100000).toFixed(2);
     } else {
         decisionForm.approved_amount_cr = '';
+        decisionForm.approved_amount_lakh = '';
     }
 };
 
@@ -73,6 +82,13 @@ const mojsCurtailmentDiff = computed(() => {
     if (isNaN(approved)) return '0.00';
     const diff = asked - approved;
     return diff > 0 ? diff.toFixed(2) : '0.00';
+});
+
+const mojsCurtailmentDiffINR = computed(() => {
+    const asked = requestedAmountINR.value;
+    const approved = parseFloat(decisionForm.approved_amount_inr) || 0;
+    const diff = asked - approved;
+    return diff > 0 ? diff : 0;
 });
 
 const mojsCurtailmentDiffLakh = computed(() => {
@@ -95,9 +111,11 @@ const openDecisionModal = (type) => {
         decisionForm.approved_amount_cr = defaultAmount;
         const numCr = parseFloat(defaultAmount);
         if (!isNaN(numCr) && numCr > 0) {
+            decisionForm.approved_amount_inr = Math.round(numCr * 10000000).toString();
             const lakhVal = Math.round(numCr * 100 * 100) / 100;
             decisionForm.approved_amount_lakh = (lakhVal % 1 === 0) ? lakhVal.toString() : lakhVal.toFixed(2);
         } else {
+            decisionForm.approved_amount_inr = '';
             decisionForm.approved_amount_lakh = '';
         }
         decisionForm.curtailment_reason = 'Unspent SNA Balance / Accrued Interest (GFR 230(8))';
@@ -766,7 +784,10 @@ const submitDecision = () => {
                             <div>
                                 <span class="text-slate-500 block font-semibold uppercase text-[10px]">State Claimed Amount</span>
                                 <span class="text-base font-black text-blue-900 font-mono">
-                                    ₹{{ requestedAmountLakh }} Lakh <span class="text-xs font-normal text-slate-500 font-sans">(₹{{ payment_request.requested_amount_cr || '0.00' }} Cr)</span>
+                                    ₹{{ formatIndianCurrency(requestedAmountINR) }}
+                                </span>
+                                <span class="text-xs font-normal text-slate-500 block font-sans">
+                                    (= ₹{{ requestedAmountLakh }} Lakh / ₹{{ payment_request.requested_amount_cr || '0.00' }} Cr)
                                 </span>
                             </div>
                             <div>
@@ -781,41 +802,42 @@ const submitDecision = () => {
                         <div class="bg-gradient-to-br from-emerald-50/60 to-blue-50/60 p-4 rounded-xl border-2 border-emerald-300 space-y-3">
                             <div class="flex items-center justify-between">
                                 <label class="block text-sm font-black text-emerald-950">
-                                    Sanctioned / Approved Central Release (₹ in Lakh) <span class="text-red-500">*</span>
+                                    Sanctioned / Approved Central Release (₹ Whole Number in Rupees) <span class="text-red-500">*</span>
                                 </label>
-                                <span class="text-xs font-semibold text-slate-500">
-                                    Claimed: ₹{{ requestedAmountLakh }} Lakh
+                                <span class="text-xs font-semibold text-slate-500 font-mono">
+                                    Claimed: ₹{{ formatIndianCurrency(requestedAmountINR) }}
                                 </span>
                             </div>
                             <div class="relative">
                                 <input 
                                     type="number" 
-                                    step="any" 
+                                    step="1" 
                                     min="0"
-                                    :max="requestedAmountLakh || 999999"
-                                    :value="decisionForm.approved_amount_lakh"
-                                    @input="onApprovedLakhChange($event.target.value)"
-                                    class="w-full rounded-xl border-emerald-300 pr-24 text-lg font-black text-emerald-950 focus:ring-emerald-500 focus:border-emerald-500"
+                                    :max="requestedAmountINR || 999999999"
+                                    :value="decisionForm.approved_amount_inr"
+                                    @input="onApprovedINRChange($event.target.value)"
+                                    class="w-full rounded-xl border-emerald-300 pr-32 text-lg font-black text-emerald-950 focus:ring-emerald-500 focus:border-emerald-500 font-mono"
                                     required
-                                    placeholder="e.g. 16 or 10"
+                                    placeholder="e.g. 1600000 or 1000000"
                                 >
                                 <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                    <span class="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded">₹ Lakh</span>
+                                    <span class="text-xs font-bold text-emerald-800 bg-emerald-100 px-2.5 py-1 rounded">₹ Rupees</span>
                                 </div>
                             </div>
-                            <div v-if="decisionForm.approved_amount_lakh" class="text-xs font-bold text-slate-600 flex items-center gap-2">
-                                <span class="bg-white/90 border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs">
-                                    = ₹{{ decisionForm.approved_amount_cr }} Crore
-                                </span>
-                            </div>
+
+                            <!-- Text Written In Words & Breakdowns Directly Below -->
+                            <AmountInWords :amount="decisionForm.approved_amount_inr" label="Sanctioned in Words" />
 
                             <!-- Live Curtailment / Deduction Detector -->
-                            <div v-if="parseFloat(mojsCurtailmentDiff) > 0" class="p-3 bg-amber-100 border border-amber-300 rounded-xl space-y-2">
+                            <div v-if="mojsCurtailmentDiffINR > 0" class="p-3 bg-amber-100 border border-amber-300 rounded-xl space-y-2">
                                 <div class="flex items-center justify-between text-xs font-bold text-amber-950">
                                     <span>⚠️ Curtailment / Allocation Deduction:</span>
                                     <span class="font-mono text-sm font-black text-amber-900">
-                                        -₹{{ mojsCurtailmentDiffLakh }} Lakh (-₹{{ mojsCurtailmentDiff }} Cr)
+                                        -₹{{ formatIndianCurrency(mojsCurtailmentDiffINR) }}
                                     </span>
+                                </div>
+                                <div class="text-[11px] font-bold text-amber-900 font-serif italic">
+                                    {{ numberToWordsIndian(mojsCurtailmentDiffINR) }} (-₹{{ mojsCurtailmentDiffLakh }} Lakh / -₹{{ mojsCurtailmentDiff }} Cr)
                                 </div>
                                 <div>
                                     <label class="block text-[11px] font-bold text-amber-950 mb-1">Curtailment / Deduction Reason <span class="text-red-600">*</span></label>
@@ -833,7 +855,7 @@ const submitDecision = () => {
                                     </select>
                                 </div>
                             </div>
-                            <div v-else-if="decisionForm.approved_amount_lakh" class="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-900 flex items-center gap-1.5">
+                            <div v-else-if="decisionForm.approved_amount_inr" class="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-900 flex items-center gap-1.5">
                                 <span>✅</span>
                                 <span>Sanctioning 100% of claimed amount without deduction.</span>
                             </div>
@@ -907,7 +929,7 @@ const submitDecision = () => {
                         >
                             <span v-if="decisionForm.processing" class="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
                             <span v-if="decisionType === 'APPROVED'">
-                                Confirm Sanction &amp; Disburse ₹{{ decisionForm.approved_amount_lakh || requestedAmountLakh }} Lakh (₹{{ decisionForm.approved_amount_cr || payment_request.requested_amount_cr }} Cr) →
+                                Confirm Sanction &amp; Disburse ₹{{ formatIndianCurrency(decisionForm.approved_amount_inr || requestedAmountINR) }} →
                             </span>
                             <span v-else-if="decisionType === 'NEEDS_CORRECTION'">
                                 Return to State for Correction →

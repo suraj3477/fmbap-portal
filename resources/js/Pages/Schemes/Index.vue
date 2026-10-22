@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { usePage, Head, Link, useForm, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import InputError from '@/Components/InputError.vue';
+import AmountInWords from '@/Components/AmountInWords.vue';
 
 const props = defineProps({
     schemes: { type: Array, default: () => [] },
@@ -1266,6 +1267,7 @@ const submitManualScheme = () => {
                             <div v-if="manualForm.sanctioned_amount_cr" class="text-[10px] text-blue-700 font-bold mt-0.5">
                                 = ₹{{ manualForm.sanctioned_amount_cr }} Cr (Outlay)
                             </div>
+                            <AmountInWords :amount="manualForm.estimated_cost_lakh ? manualForm.estimated_cost_lakh * 100000 : 0" label="Cost in Words" />
                             <InputError :message="manualForm.errors.estimated_cost_lakh" class="mt-1" />
                         </div>
                     </div>

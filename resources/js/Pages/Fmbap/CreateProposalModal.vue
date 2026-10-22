@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch } from 'vue';
 import { useForm } from '@inertiajs/vue3';
+import AmountInWords from '@/Components/AmountInWords.vue';
 
 const isOpen = ref(false);
 
@@ -120,15 +121,17 @@ const submit = () => {
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div>
                             <label class="block text-xs font-semibold text-gray-700 uppercase">Estimated amount / IMC approved cost (₹ in Cr)</label>
-                            <input type="number" step="0.01" v-model="form.estimated_cost_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm" required />
+                            <input type="number" step="0.01" v-model="form.estimated_cost_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm font-semibold" required />
+                            <AmountInWords :amount="form.estimated_cost_cr ? form.estimated_cost_cr * 10000000 : 0" label="Estimated Cost" />
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-700 uppercase">Executed Amount (₹ in Cr)</label>
-                            <input type="number" step="0.01" v-model="form.executed_amount_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm" required />
+                            <input type="number" step="0.01" v-model="form.executed_amount_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm font-semibold" required />
+                            <AmountInWords :amount="form.executed_amount_cr ? form.executed_amount_cr * 10000000 : 0" label="Executed Amount" />
                         </div>
                         <div>
                             <label class="block text-xs font-semibold text-gray-700 uppercase">Funding Pattern</label>
-                            <select v-model="form.funding_pattern" class="mt-1 block w-full rounded-md border-gray-300 text-sm bg-white">
+                            <select v-model="form.funding_pattern" class="mt-1 block w-full rounded-md border-gray-300 text-sm bg-white font-semibold">
                                 <option value="90/10">90/10</option>
                                 <option value="80/20">80/20</option>
                                 <option value="70/30">70/30</option>
@@ -145,11 +148,13 @@ const submit = () => {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-medium text-gray-600">Central Share</label>
-                                <input type="number" step="0.01" v-model="form.central_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm" required />
+                                <input type="number" step="0.01" v-model="form.central_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm font-semibold" required />
+                                <AmountInWords :amount="form.central_share_cr ? form.central_share_cr * 10000000 : 0" label="Central Share" />
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-600">State Share</label>
-                                <input type="number" step="0.01" v-model="form.state_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm" required />
+                                <input type="number" step="0.01" v-model="form.state_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm font-semibold" required />
+                                <AmountInWords :amount="form.state_share_cr ? form.state_share_cr * 10000000 : 0" label="State Share" />
                             </div>
                         </div>
                     </div>
@@ -160,11 +165,13 @@ const submit = () => {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-xs font-medium text-gray-600">Central Share</label>
-                                <input type="number" step="0.01" v-model="form.released_central_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm" />
+                                <input type="number" step="0.01" v-model="form.released_central_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm font-semibold" />
+                                <AmountInWords :amount="form.released_central_share_cr ? form.released_central_share_cr * 10000000 : 0" label="Released Central" />
                             </div>
                             <div>
                                 <label class="block text-xs font-medium text-gray-600">State Share</label>
-                                <input type="number" step="0.01" v-model="form.released_state_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm" />
+                                <input type="number" step="0.01" v-model="form.released_state_share_cr" class="mt-1 block w-full rounded-md border-gray-300 text-sm font-semibold" />
+                                <AmountInWords :amount="form.released_state_share_cr ? form.released_state_share_cr * 10000000 : 0" label="Released State" />
                             </div>
                         </div>
                     </div>

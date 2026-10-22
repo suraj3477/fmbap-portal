@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
+import AmountInWords from '@/Components/AmountInWords.vue';
 
 const props = defineProps({
     projects: {
@@ -216,6 +217,7 @@ const isReleaseModalOpen = ref(false);
 const releaseProject = ref(null);
 const releaseForm = useForm({
     instalment_number: '',
+    requested_amount_inr: '',
     requested_amount_cr: '',
     bank_details: '',
     physical_progress_pct: '',
@@ -223,6 +225,16 @@ const releaseForm = useForm({
     utilization_certificate: null,
     state_remarks: '',
 });
+
+const onReleaseINRChange = (val) => {
+    releaseForm.requested_amount_inr = val;
+    const num = parseFloat(val);
+    if (!isNaN(num) && num > 0) {
+        releaseForm.requested_amount_cr = (num / 10000000).toFixed(4).replace(/\.?0+$/, '');
+    } else {
+        releaseForm.requested_amount_cr = '';
+    }
+};
 
 const openReleaseModal = (item) => {
     releaseProject.value = item;
@@ -511,19 +523,21 @@ const hasPendingRequest = (item) => {
                         <!-- Amounts -->
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Est. Amount / IMC Cost</label>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Est. Amount / IMC Cost (₹ Cr)</label>
                                 <input v-model="form.estimated_cost_cr" type="number" step="0.01" min="0"
-                                    class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition" />
+                                    class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold" />
+                                <AmountInWords :amount="form.estimated_cost_cr ? form.estimated_cost_cr * 10000000 : 0" label="Estimated Cost" />
                             </div>
                             <div>
-                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Executed Amount</label>
+                                <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Executed Amount (₹ Cr)</label>
                                 <input v-model="form.executed_amount_cr" type="number" step="0.01" min="0"
-                                    class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition" />
+                                    class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold" />
+                                <AmountInWords :amount="form.executed_amount_cr ? form.executed_amount_cr * 10000000 : 0" label="Executed Amount" />
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Funding Pattern</label>
                                 <select v-model="form.funding_pattern"
-                                    class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition">
+                                    class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold">
                                     <option value="" disabled>Select pattern</option>
                                     <option value="90/10">90/10</option>
                                     <option value="80/20">80/20</option>
@@ -542,12 +556,14 @@ const hasPendingRequest = (item) => {
                                 <div>
                                     <label class="block text-xs text-gray-500 mb-1">Central Share</label>
                                     <input v-model="form.central_share_cr" type="number" step="0.01" min="0"
-                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition" />
+                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold" />
+                                    <AmountInWords :amount="form.central_share_cr ? form.central_share_cr * 10000000 : 0" label="Central Share" />
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-500 mb-1">State Share</label>
                                     <input v-model="form.state_share_cr" type="number" step="0.01" min="0"
-                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition" />
+                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold" />
+                                    <AmountInWords :amount="form.state_share_cr ? form.state_share_cr * 10000000 : 0" label="State Share" />
                                 </div>
                             </div>
                         </div>
@@ -559,12 +575,14 @@ const hasPendingRequest = (item) => {
                                 <div>
                                     <label class="block text-xs text-gray-500 mb-1">Central Share</label>
                                     <input v-model="form.released_central_share_cr" type="number" step="0.01" min="0"
-                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition" />
+                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold" />
+                                    <AmountInWords :amount="form.released_central_share_cr ? form.released_central_share_cr * 10000000 : 0" label="Released Central" />
                                 </div>
                                 <div>
                                     <label class="block text-xs text-gray-500 mb-1">State Share</label>
                                     <input v-model="form.released_state_share_cr" type="number" step="0.01" min="0"
-                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition" />
+                                        class="w-full rounded-lg border border-gray-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-200 px-3 py-2 text-sm outline-none transition font-semibold" />
+                                    <AmountInWords :amount="form.released_state_share_cr ? form.released_state_share_cr * 10000000 : 0" label="Released State" />
                                 </div>
                             </div>
                         </div>
@@ -818,9 +836,25 @@ const hasPendingRequest = (item) => {
                                 class="w-full rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 px-3 py-2 text-sm outline-none transition" required />
                         </div>
                         <div>
-                            <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Requested Amount (₹ Cr) <span class="text-red-500">*</span></label>
-                            <input v-model="releaseForm.requested_amount_cr" type="number" min="0.01" step="0.01"
-                                class="w-full rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 px-3 py-2 text-sm outline-none transition" required />
+                            <label class="block text-xs font-bold text-gray-700 uppercase mb-1">
+                                Requested Amount (₹ Whole Number) <span class="text-red-500">*</span>
+                            </label>
+                            <div class="relative">
+                                <input 
+                                    type="number" 
+                                    step="1" 
+                                    min="1"
+                                    :value="releaseForm.requested_amount_inr"
+                                    @input="onReleaseINRChange($event.target.value)"
+                                    placeholder="e.g. 1600000 or 10000000"
+                                    class="w-full rounded-lg border border-gray-300 focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200 px-3 py-2 text-sm font-bold font-mono outline-none transition" 
+                                    required 
+                                />
+                                <div class="absolute inset-y-0 right-0 pr-2.5 flex items-center pointer-events-none">
+                                    <span class="text-[11px] font-bold text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded">₹ Rupees</span>
+                                </div>
+                            </div>
+                            <AmountInWords :amount="releaseForm.requested_amount_inr" label="Claim in Words" />
                         </div>
                     </div>
 

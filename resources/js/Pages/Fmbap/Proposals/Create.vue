@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
+import AmountInWords from '@/Components/AmountInWords.vue';
 
 const page = usePage();
 const user = computed(() => page.props.auth?.user);
@@ -82,7 +83,8 @@ const handlePdfUpload = (e) => {
 
                         <div>
                             <label class="block text-sm font-medium text-gray-700">Estimated Cost (in Crores) <span class="text-red-500">*</span></label>
-                            <input v-model="form.estimated_cost_cr" type="number" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" required>
+                            <input v-model="form.estimated_cost_cr" type="number" step="0.01" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 font-semibold" required>
+                            <AmountInWords :amount="form.estimated_cost_cr ? form.estimated_cost_cr * 10000000 : 0" label="Estimated Cost" />
                             <div v-if="form.errors.estimated_cost_cr" class="text-red-500 text-xs mt-1">{{ form.errors.estimated_cost_cr }}</div>
                         </div>
 

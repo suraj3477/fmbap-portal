@@ -7,6 +7,8 @@ import WizardStepIndicator from '@/Components/WizardStepIndicator.vue';
 import SchemeSearchDropdown from '@/Components/SchemeSearchDropdown.vue';
 import Gfr12aModal from '@/Components/Gfr12aModal.vue';
 import MojsSanctionLedgerCard from '@/Components/MojsSanctionLedgerCard.vue';
+import AmountInWords from '@/Components/AmountInWords.vue';
+import { numberToWordsIndian, formatIndianCurrency, formatLakhAndCrore } from '@/Utils/numberToWords';
 
 const props = defineProps({
     paymentRequest: {
@@ -57,6 +59,16 @@ const isOverclaimWarning = computed(() => {
     return req > 0 && bal > 0 && req > bal;
 });
 
+const onRequestedINRChange = (val) => {
+    form.value.requested_amount_inr = val;
+    const num = parseFloat(val);
+    if (!isNaN(num) && num >= 0) {
+        form.value.requested_amount_cr = (num / 10000000).toFixed(4).replace(/\.?0+$/, '') || '0';
+    } else {
+        form.value.requested_amount_cr = '';
+    }
+};
+
 const onSchemeSelected = (scheme) => {
     form.value.scheme_id = scheme.id;
     form.value.scheme_obj = scheme;
@@ -95,13 +107,17 @@ onMounted(() => {
     const relState = (cPct > 0) ? ((parseFloat(relCentral) * (sPct / cPct)).toFixed(2)) : '0.00';
     const balCentral = scheme?.balance_central_share_cr || proj?.balance_central_share_cr || '';
 
+    const initialCr = props.paymentRequest.requested_amount_cr;
+    const initialINR = initialCr ? Math.round(parseFloat(initialCr) * 10000000).toString() : '';
+
     form.value = {
         payment_request_id: props.paymentRequest.id,
         // Step 1
         scheme_id: props.paymentRequest.scheme_id,
         scheme_obj: props.paymentRequest.scheme,
         // Step 2
-        requested_amount_cr: props.paymentRequest.requested_amount_cr ?? '',
+        requested_amount_inr: initialINR,
+        requested_amount_cr: initialCr ?? '',
         instalment_number: props.paymentRequest.instalment_number ?? 1,
         bank_details: props.paymentRequest.bank_details ?? '',
         state_remarks: props.paymentRequest.state_remarks || proj?.remarks || '',
@@ -187,6 +203,7 @@ const saveStep = async (isFinalSubmit = false) => {
     if (currentStep.value === 1) {
         formData.append('scheme_id', form.value.scheme_id);
     } else if (currentStep.value === 2) {
+        formData.append('requested_amount_inr', form.value.requested_amount_inr || '');
         formData.append('requested_amount_cr', form.value.requested_amount_cr);
         formData.append('instalment_number', form.value.instalment_number);
         formData.append('bank_details', form.value.bank_details);
@@ -332,6 +349,7 @@ const saveStep = async (isFinalSubmit = false) => {
                                         class="w-full rounded-lg border-slate-300 text-sm font-bold text-slate-900 focus:ring-blue-500 focus:border-blue-500" 
                                         placeholder="e.g. 6.08"
                                     >
+                                    <AmountInWords :amount="form.estimated_cost_cr ? form.estimated_cost_cr * 10000000 : 0" label="Estimated Cost" />
                                     <span class="text-[10px] text-slate-400 mt-1 block">Total approved project outlay</span>
                                 </div>
 
@@ -350,6 +368,7 @@ const saveStep = async (isFinalSubmit = false) => {
                                         class="w-full rounded-lg border-slate-300 text-sm font-semibold text-slate-800" 
                                         placeholder="e.g. 5.47"
                                     >
+                                    <AmountInWords :amount="form.executed_amount_cr ? form.executed_amount_cr * 10000000 : 0" label="Executed Amount" />
                                     <span class="text-[10px] text-slate-400 mt-1 block">Work physically completed on ground</span>
                                 </div>
 
@@ -455,40 +474,36 @@ const saveStep = async (isFinalSubmit = false) => {
                                 <div>
                                     <div class="flex items-center justify-between mb-1">
                                         <label class="block text-sm font-bold text-gray-800">
-                                            Requested Central Assistance (₹ Cr) <span class="text-red-500">*</span>
+                                            Requested Central Assistance (₹ Whole Amount in Rupees) <span class="text-red-500">*</span>
                                         </label>
-                                        <span v-if="form.balance_central_share_cr" class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                                            Permissible Balance: ₹{{ form.balance_central_share_cr }} Cr
+                                        <span v-if="form.balance_central_share_cr" class="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 font-mono">
+                                            Balance: ₹{{ (parseFloat(form.balance_central_share_cr) * 10000000).toLocaleString('en-IN') }} (₹{{ form.balance_central_share_cr }} Cr)
                                         </span>
                                     </div>
                                     <div class="relative">
                                         <input 
                                             type="number" 
-                                            step="0.01" 
-                                            v-model="form.requested_amount_cr" 
+                                            step="1" 
+                                            :value="form.requested_amount_inr" 
+                                            @input="onRequestedINRChange($event.target.value)"
                                             :class="[
-                                                'w-full rounded-xl pr-24 text-base font-extrabold text-blue-950 focus:ring-blue-500 focus:border-blue-500',
+                                                'w-full rounded-xl pr-28 text-base font-extrabold text-blue-950 focus:ring-blue-500 focus:border-blue-500 font-mono',
                                                 isOverclaimWarning ? 'border-red-400 bg-red-50/30' : 'border-gray-300'
                                             ]"
                                             required 
-                                            placeholder="e.g. 0.54"
+                                            placeholder="e.g. 1600000 or 1648000"
                                         >
                                         <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-                                            <span class="text-xs font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">₹ Crore</span>
+                                            <span class="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-1 rounded">₹ Rupees</span>
                                         </div>
                                     </div>
 
-                                    <!-- Live Lakh Conversion & Alerts -->
-                                    <div v-if="form.requested_amount_cr" class="mt-2 flex items-center gap-2 flex-wrap">
-                                        <span class="text-xs font-bold text-slate-700 bg-white border border-slate-200 px-2.5 py-1 rounded-md shadow-2xs inline-block">
-                                            = ₹{{ (parseFloat(form.requested_amount_cr || 0) * 100).toFixed(2) }} Lakh
-                                        </span>
-                                        <span v-if="!isOverclaimWarning && form.balance_central_share_cr" class="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-md inline-block">
-                                            ✓ Permissible Ceiling Available
-                                        </span>
-                                        <span v-else-if="isOverclaimWarning" class="text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md inline-block">
-                                            ⚠️ Exceeds Balance by ₹{{ (parseFloat(form.requested_amount_cr) - parseFloat(form.balance_central_share_cr)).toFixed(2) }} Cr
-                                        </span>
+                                    <!-- Text Written In Words & Breakdowns Directly Below -->
+                                    <AmountInWords :amount="form.requested_amount_inr" label="Claim in Words" />
+
+                                    <!-- Overclaim Warning Alert -->
+                                    <div v-if="isOverclaimWarning" class="mt-2 text-xs font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-md inline-block">
+                                        ⚠️ Exceeds Balance by ₹{{ (parseFloat(form.requested_amount_cr) - parseFloat(form.balance_central_share_cr)).toFixed(2) }} Cr
                                     </div>
                                 </div>
 
