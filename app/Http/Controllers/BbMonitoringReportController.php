@@ -154,7 +154,15 @@ class BbMonitoringReportController extends Controller
             $actionLabel = $decision === 'FORWARDED_TO_MOJS' 
                 ? "BB Inspection Completed{$recommendedTxt} & Forwarded to MoJS" 
                 : ($decision === 'NEEDS_CORRECTION' ? 'BB Sent Back for Correction' : 'BB Rejected Request');
-            $paymentRequest->createRevisionSnapshot($actionLabel);
+
+            $paymentRequest->createRevisionSnapshot($actionLabel, auth()->user(), [
+                'physical_progress_pct'          => $report->bb_physical_progress_pct ?? $paymentRequest->physical_progress_pct,
+                'physical_progress_description'  => $report->bb_physical_progress_description ?? $paymentRequest->physical_progress_description,
+                'financial_progress_pct'         => $report->bb_financial_progress_pct ?? $paymentRequest->financial_progress_pct,
+                'financial_progress_description' => $report->bb_financial_progress_description ?? $paymentRequest->financial_progress_description,
+                'bb_recommended_amount_cr'       => $paymentRequest->bb_recommended_amount_cr,
+                'bb_remarks'                     => $paymentRequest->bb_remarks,
+            ]);
         } else {
             $paymentRequest->save();
         }

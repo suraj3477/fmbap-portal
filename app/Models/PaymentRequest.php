@@ -102,7 +102,7 @@ class PaymentRequest extends Model
         return $this->hasMany(PaymentRequestRevision::class)->latest();
     }
 
-    public function createRevisionSnapshot(?string $label = null, ?User $user = null): PaymentRequestRevision
+    public function createRevisionSnapshot(?string $label = null, ?User $user = null, array $overrides = []): PaymentRequestRevision
     {
         $user = $user ?? auth()->user();
         $nextVersionCount = $this->revisions()->count() + 1;
@@ -110,7 +110,7 @@ class PaymentRequest extends Model
 
         $stateGovtDoc = $this->scheme?->fmbapProject?->state_govt_doc_path;
 
-        return $this->revisions()->create([
+        $data = [
             'scheme_id'                      => $this->scheme_id,
             'user_id'                        => $user?->id,
             'version_label'                  => $versionLabel,
@@ -142,7 +142,9 @@ class PaymentRequest extends Model
             'additional_doc_paths'           => $this->additional_doc_paths,
             'author_name'                    => $user?->name ?? 'System',
             'author_role'                    => $user?->role ?? 'N/A',
-        ]);
+        ];
+
+        return $this->revisions()->create(array_merge($data, $overrides));
     }
 
     // ── Scopes ────────────────────────────────────────────────────────────────

@@ -565,10 +565,34 @@ const submitDecision = () => {
                                 </div>
 
                                 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white p-2.5 rounded-sm border border-slate-200 text-xs">
-                                    <div><span class="text-slate-400 block text-[10px] uppercase font-bold">Requested Claim</span><span class="font-bold font-mono text-slate-900">₹{{ rev.requested_amount_cr || '0.00' }} Cr</span></div>
-                                    <div><span class="text-slate-400 block text-[10px] uppercase font-bold">Instalment</span><span class="font-bold text-slate-800">No. {{ rev.instalment_number || 'N/A' }}</span></div>
-                                    <div><span class="text-slate-400 block text-[10px] uppercase font-bold">Physical Progress</span><span class="font-bold text-slate-800">{{ rev.physical_progress_pct || 0 }}%</span></div>
-                                    <div><span class="text-slate-400 block text-[10px] uppercase font-bold">Financial Progress</span><span class="font-bold text-slate-800">{{ rev.financial_progress_pct || 0 }}%</span></div>
+                                    <div>
+                                        <span class="text-slate-400 block text-[10px] uppercase font-bold">
+                                            {{ rev.author_role === 'board_official' && rev.bb_recommended_amount_cr ? 'BB Recommended' : 'Requested Claim' }}
+                                        </span>
+                                        <span class="font-bold font-mono text-slate-900">
+                                            ₹{{ (rev.author_role === 'board_official' && rev.bb_recommended_amount_cr ? rev.bb_recommended_amount_cr : rev.requested_amount_cr) || '0.00' }} Cr
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Instalment</span>
+                                        <span class="font-bold text-slate-800">No. {{ rev.instalment_number || 'N/A' }}</span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400 block text-[10px] uppercase font-bold">
+                                            {{ rev.author_role === 'board_official' ? 'BB Verified Phys. Progress' : 'Physical Progress' }}
+                                        </span>
+                                        <span class="font-bold" :class="rev.author_role === 'board_official' ? 'text-indigo-700 font-extrabold' : 'text-slate-800'">
+                                            {{ rev.physical_progress_pct || 0 }}%
+                                        </span>
+                                    </div>
+                                    <div>
+                                        <span class="text-slate-400 block text-[10px] uppercase font-bold">
+                                            {{ rev.author_role === 'board_official' ? 'BB Verified Fin. Progress' : 'Financial Progress' }}
+                                        </span>
+                                        <span class="font-bold" :class="rev.author_role === 'board_official' ? 'text-indigo-700 font-extrabold' : 'text-slate-800'">
+                                            {{ rev.financial_progress_pct || 0 }}%
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <!-- Remarks -->
