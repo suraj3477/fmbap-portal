@@ -291,6 +291,11 @@ const saveStep = async (isFinalSubmit = false) => {
         formData.append('is_final_submit', 1);
     }
 
+    const metaToken = typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]') : null;
+    if (metaToken && metaToken.content) {
+        formData.append('_token', metaToken.content);
+    }
+
     if (currentStep.value === 1) {
         formData.append('scheme_id', form.value.scheme_id);
     } else if (currentStep.value === 2) {

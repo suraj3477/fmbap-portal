@@ -1,9 +1,11 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import GeoTaggedGallery from '@/Components/GeoTaggedGallery.vue';
+
+const page = usePage();
 
 const props = defineProps({
     paymentRequest: {
@@ -102,6 +104,12 @@ const saveReport = async (isFinal = false, decision = 'FORWARDED_TO_MOJS') => {
         formData.append(`geo_files[${index}][caption]`, item.caption);
     });
 
+    const metaToken = typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]') : null;
+    const csrfToken = metaToken?.content || page.props.csrf_token;
+    if (csrfToken) {
+        formData.append('_token', csrfToken);
+    }
+
     try {
         await axios.post(route('monitoring-requests.report.store', props.paymentRequest.id), formData, {
             headers: { 'Content-Type': 'multipart/form-data' }
@@ -115,7 +123,11 @@ const saveReport = async (isFinal = false, decision = 'FORWARDED_TO_MOJS') => {
             newGeoFiles.value = [];
         }
     } catch (error) {
-        errorMsg.value = error.response?.data?.message || 'An error occurred while saving.';
+        if (error.response?.status === 419) {
+            errorMsg.value = 'Your security session has expired. Please refresh the page and try submitting again.';
+        } else {
+            errorMsg.value = error.response?.data?.message || 'An error occurred while saving.';
+        }
     } finally {
         isSubmitting.value = false;
     }
