@@ -142,7 +142,7 @@ const balanceAfterClaimCr = computed(() => {
                         </span>
                     </div>
                     <p class="text-xs text-slate-500 mt-0.5">
-                        Statutory tracking of Ministry of Jal Shakti approvals, tranches disbursed, curtailments, and remaining balance eligibility.
+                        Statutory tracking of Ministry of Jal Shakti approvals, tranches disbursed, and remaining balance eligibility.
                     </p>
                 </div>
             </div>
@@ -198,22 +198,22 @@ const balanceAfterClaimCr = computed(() => {
                 </div>
             </div>
 
-            <!-- 3. Ministry Curtailments / Deductions -->
-            <div class="bg-white/90 p-3.5 rounded-xl border border-amber-200 shadow-2xs hover:border-amber-300 transition">
+            <!-- 3. State Matching Share -->
+            <div class="bg-white/90 p-3.5 rounded-xl border border-purple-200 shadow-2xs hover:border-purple-300 transition">
                 <div class="flex items-center justify-between mb-1">
-                    <span class="text-[10px] font-bold text-amber-700 uppercase tracking-wider">MoJS Curtailments</span>
-                    <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">
-                        Withheld
+                    <span class="text-[10px] font-bold text-purple-700 uppercase tracking-wider">State Share</span>
+                    <span class="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-100 text-purple-800">
+                        {{ scheme?.state_share_pct || 10 }}% State
                     </span>
                 </div>
-                <div class="text-lg font-black text-amber-800">
-                    ₹{{ mojsCurtailedCr }} <span class="text-xs font-bold text-amber-600">Cr</span>
+                <div class="text-lg font-black text-purple-900">
+                    ₹{{ stateEntitlementCr }} <span class="text-xs font-bold text-purple-600">Cr</span>
                 </div>
-                <div class="text-[11px] font-semibold text-amber-700 mt-0.5">
-                    = ₹{{ toLakh(mojsCurtailedCr) }} Lakh
+                <div class="text-[11px] font-semibold text-purple-700 mt-0.5">
+                    = ₹{{ toLakh(stateEntitlementCr) }} Lakh
                 </div>
                 <div class="text-[10px] text-slate-400 mt-1">
-                    Deductions per inspection / SNA rules
+                    State Government budget share
                 </div>
             </div>
 
@@ -284,7 +284,6 @@ const balanceAfterClaimCr = computed(() => {
                             <th class="py-2.5 px-3">Instalment #</th>
                             <th class="py-2.5 px-3">State Claim</th>
                             <th class="py-2.5 px-3 text-emerald-800">MoJS Approved</th>
-                            <th class="py-2.5 px-3 text-amber-800">Curtailment</th>
                             <th class="py-2.5 px-3">MoJS Sanction Order</th>
                             <th class="py-2.5 px-3 text-right">Sanction Status</th>
                         </tr>
@@ -311,21 +310,6 @@ const balanceAfterClaimCr = computed(() => {
                                     ₹{{ claim.approved_amount_cr.toFixed(2) }} Cr
                                 </span>
                                 <span class="text-[10px] text-emerald-700 block font-semibold">({{ toLakh(claim.approved_amount_cr) }} Lakh)</span>
-                            </td>
-
-                            <!-- Curtailment / Deduction -->
-                            <td class="py-3 px-3">
-                                <div v-if="claim.deduction_amount_cr > 0">
-                                    <span class="font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 inline-block">
-                                        -₹{{ claim.deduction_amount_cr.toFixed(2) }} Cr
-                                    </span>
-                                    <span class="text-[10px] text-slate-500 block mt-0.5 font-normal max-w-xs truncate" :title="claim.curtailment_reason || 'Administrative curtailment'">
-                                        Reason: {{ claim.curtailment_reason || 'SNA / Progress Shortfall' }}
-                                    </span>
-                                </div>
-                                <span v-else class="text-slate-400 font-medium text-[11px]">
-                                    Nil (Full Sanction)
-                                </span>
                             </td>
 
                             <!-- Sanction Order Reference -->
@@ -369,7 +353,7 @@ const balanceAfterClaimCr = computed(() => {
             <span class="text-xl text-rose-600 select-none">⚠️</span>
             <div class="text-xs text-rose-950">
                 <span class="font-extrabold text-rose-800 uppercase block">Overclaim Warning: Amount Exceeds Permissible Balance</span>
-                Your requested claim of <strong>₹{{ requestedNum.toFixed(2) }} Cr</strong> exceeds the available Central balance of <strong>₹{{ balanceCentralCr }} Cr</strong> by <strong>₹{{ (requestedNum - parseFloat(balanceCentralCr)).toFixed(2) }} Cr</strong>. Claims exceeding the remaining sanctioned entitlement may be rejected or curtailed by the Brahmaputra Board and Ministry of Jal Shakti.
+                Your requested claim of <strong>₹{{ requestedNum.toFixed(2) }} Cr</strong> exceeds the available Central balance of <strong>₹{{ balanceCentralCr }} Cr</strong> by <strong>₹{{ (requestedNum - parseFloat(balanceCentralCr)).toFixed(2) }} Cr</strong>. Claims exceeding the remaining sanctioned entitlement cannot be processed.
             </div>
         </div>
 

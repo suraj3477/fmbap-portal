@@ -118,7 +118,6 @@ const openDecisionModal = (type) => {
             decisionForm.approved_amount_inr = '';
             decisionForm.approved_amount_lakh = '';
         }
-        decisionForm.curtailment_reason = 'Unspent SNA Balance / Accrued Interest (GFR 230(8))';
         const stCode = (payment_request.value?.state || 'NE').substring(0, 3).toUpperCase();
         const schCode = scheme.value?.scheme_code || 'SCH';
         decisionForm.sanction_order_no = `MoJS/FMBAP/${stCode}/${schCode}/2026-${payment_request.value?.id}`;
@@ -337,32 +336,13 @@ const submitDecision = () => {
                                 </div>
                             </div>
 
-                            <!-- Curtailment / Allocation Deduction Alert Banner -->
+                            <!-- Ministry Sanction Remarks -->
                             <div 
-                                v-if="(payment_request.deduction_amount_cr && payment_request.deduction_amount_cr > 0) || (payment_request.status === 'APPROVED' && payment_request.approved_amount_cr && payment_request.approved_amount_cr < payment_request.requested_amount_cr)" 
-                                class="p-4 bg-amber-50/90 border-2 border-amber-300 rounded-xl space-y-2 text-xs"
+                                v-if="payment_request.mojs_remarks" 
+                                class="p-3.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-xs"
                             >
-                                <div class="flex items-center justify-between flex-wrap gap-2">
-                                    <div class="flex items-center gap-2">
-                                        <span class="p-1 bg-amber-200 rounded-md text-amber-900 text-sm font-black">⚠️</span>
-                                        <span class="font-black text-amber-950 text-sm">
-                                            Central Curtailment Recorded: -₹{{ payment_request.deduction_amount_cr || (payment_request.requested_amount_cr - payment_request.approved_amount_cr).toFixed(2) }} Cr
-                                        </span>
-                                    </div>
-                                    <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-200/90 text-amber-900 border border-amber-300">
-                                        Adjusted Release
-                                    </span>
-                                </div>
-                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2 text-amber-900 pt-1">
-                                    <div>
-                                        <span class="font-bold text-amber-950 block">Curtailment / Deduction Grounds:</span>
-                                        <span class="text-slate-700 font-medium">{{ payment_request.curtailment_reason || 'SNA Unspent Balance Deduction / Field Shortfall' }}</span>
-                                    </div>
-                                    <div>
-                                        <span class="font-bold text-amber-950 block">Sanction Remarks / Directives:</span>
-                                        <span class="text-slate-700 font-medium">{{ payment_request.mojs_remarks || 'Deduction applied as per scheme guidelines.' }}</span>
-                                    </div>
-                                </div>
+                                <span class="font-bold text-slate-800 block">Ministry Sanction Remarks:</span>
+                                <span class="text-slate-700 font-medium">{{ payment_request.mojs_remarks }}</span>
                             </div>
 
                             <!-- Sanction Order Details & Official PDF -->
@@ -828,37 +808,6 @@ const submitDecision = () => {
                             <!-- Text Written In Words & Breakdowns Directly Below -->
                             <AmountInWords :amount="decisionForm.approved_amount_inr" label="Sanctioned in Words" />
 
-                            <!-- Live Curtailment / Deduction Detector -->
-                            <div v-if="mojsCurtailmentDiffINR > 0" class="p-3 bg-amber-100 border border-amber-300 rounded-xl space-y-2">
-                                <div class="flex items-center justify-between text-xs font-bold text-amber-950">
-                                    <span>⚠️ Curtailment / Allocation Deduction:</span>
-                                    <span class="font-mono text-sm font-black text-amber-900">
-                                        -₹{{ formatIndianCurrency(mojsCurtailmentDiffINR) }}
-                                    </span>
-                                </div>
-                                <div class="text-[11px] font-bold text-amber-900 font-serif italic">
-                                    {{ numberToWordsIndian(mojsCurtailmentDiffINR) }} (-₹{{ mojsCurtailmentDiffLakh }} Lakh / -₹{{ mojsCurtailmentDiff }} Cr)
-                                </div>
-                                <div>
-                                    <label class="block text-[11px] font-bold text-amber-950 mb-1">Curtailment / Deduction Reason <span class="text-red-600">*</span></label>
-                                    <select 
-                                        v-model="decisionForm.curtailment_reason" 
-                                        class="w-full text-xs rounded-lg border-amber-300 bg-white font-medium text-slate-800 focus:ring-amber-500 focus:border-amber-500"
-                                        required
-                                    >
-                                        <option value="Unspent SNA Balance / Accrued Interest (GFR 230(8))">Unspent SNA Balance / Accrued Interest (GFR 230(8))</option>
-                                        <option value="Field Inspection / Physical Progress Shortfall">Field Inspection / Physical Progress Shortfall</option>
-                                        <option value="Inadmissible / Non-eligible Expenditure Disallowed">Inadmissible / Non-eligible Expenditure Disallowed</option>
-                                        <option value="Annual Budget Tranche Ceiling / Allocation Cap">Annual Budget Tranche Ceiling / Allocation Cap</option>
-                                        <option value="State Matching Share Proportion Pending">State Matching Share Proportion Pending</option>
-                                        <option value="Other Technical / Financial Reason">Other Technical / Financial Reason</option>
-                                    </select>
-                                </div>
-                            </div>
-                            <div v-else-if="decisionForm.approved_amount_inr" class="p-2.5 bg-emerald-100/70 border border-emerald-300 rounded-lg text-xs font-bold text-emerald-900 flex items-center gap-1.5">
-                                <span>✅</span>
-                                <span>Sanctioning 100% of claimed amount without deduction.</span>
-                            </div>
                         </div>
 
                         <!-- Sanction Order Details -->

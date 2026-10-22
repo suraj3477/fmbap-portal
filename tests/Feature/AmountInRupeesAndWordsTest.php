@@ -83,11 +83,10 @@ class AmountInRupeesAndWordsTest extends TestCase
             'instalment_number' => 1,
         ]);
 
-        // MoJS sanctions ₹10,00,000 (0.10 Cr) with ₹6,00,000 curtailment
+        // MoJS sanctions ₹10,00,000 (0.10 Cr)
         $response = $this->actingAs($mojsUser)->post(route('fund-release.mojsDecision', $claim->id), [
             'decision' => 'APPROVED',
             'approved_amount_inr' => 1000000,
-            'curtailment_reason' => 'Unspent SNA Balance / Accrued Interest (GFR 230(8))',
             'remarks' => 'Sanctioned ₹10,00,000 as per utilization certificate review.',
         ]);
 
