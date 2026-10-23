@@ -10,10 +10,11 @@ if (!is_dir($storagePath)) {
     @mkdir($storagePath, 0755, true);
 }
 
-@mkdir($storagePath . '/framework/views', 0755, true);
-@mkdir($storagePath . '/framework/cache/data', 0755, true);
-@mkdir($storagePath . '/framework/sessions', 0755, true);
-@mkdir($storagePath . '/logs', 0755, true);
+@mkdir($storagePath . '/framework/views', 0777, true);
+@mkdir($storagePath . '/framework/cache/data', 0777, true);
+@mkdir($storagePath . '/framework/sessions', 0777, true);
+@mkdir($storagePath . '/logs', 0777, true);
+@mkdir('/tmp/views', 0777, true);
 
 // Set storage paths to writable /tmp
 putenv("LARAVEL_STORAGE_PATH={$storagePath}");
@@ -51,6 +52,7 @@ $tmpDb = '/tmp/database.sqlite';
 if (file_exists($bundledDb)) {
     if (!file_exists($tmpDb) || filesize($tmpDb) === 0) {
         @copy($bundledDb, $tmpDb);
+        @chmod($tmpDb, 0666);
     }
 }
 
@@ -72,7 +74,7 @@ $defaults = [
     'BROADCAST_CONNECTION'   => 'log',
     'APP_ENV'                => 'production',
     'APP_DEBUG'              => 'true',
-    'APP_KEY'                => 'base64:cHK9pF3RfTxCotwo05bA3nNYwDnf07mw3lAZLXDEnS0=',
+    'APP_KEY'                => 'base64:/Yrv4A9903vtBIjoAo4tBRTiLD6+wRLPihbB1YQuEcc=',
 ];
 
 foreach ($defaults as $k => $v) {
@@ -125,6 +127,14 @@ if ($bcryptRounds < 4 || $bcryptRounds > 31) {
 if ((isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https') || (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on')) {
     $_SERVER['HTTPS'] = 'on';
     $_SERVER['SERVER_PORT'] = 443;
+}
+
+if (!empty($_SERVER['HTTP_HOST'])) {
+    $scheme = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? 'https' : 'http';
+    $dynamicAppUrl = "{$scheme}://{$_SERVER['HTTP_HOST']}";
+    putenv("APP_URL={$dynamicAppUrl}");
+    $_ENV['APP_URL'] = $dynamicAppUrl;
+    $_SERVER['APP_URL'] = $dynamicAppUrl;
 }
 
 // 5. Delegate execution to Laravel's public entrypoint
