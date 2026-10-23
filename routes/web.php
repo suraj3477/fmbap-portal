@@ -220,6 +220,7 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     Route::prefix('analytics')->name('analytics.')->group(function () {
         Route::get('/', [MisAnalyticsController::class, 'index'])->name('index');
         Route::get('/export-excel', [MisAnalyticsController::class, 'exportExcel'])->name('export-excel');
+        Route::get('/export-tickets-excel', [MisAnalyticsController::class, 'exportTicketsExcel'])->name('export-tickets-excel');
         Route::get('/export-pdf', [MisAnalyticsController::class, 'exportPdf'])->name('export-pdf');
     });
 

@@ -151,9 +151,10 @@ class PaymentRequest extends Model
     /**
      * Role-aware scope: State sees own, BB/MoJS/Admin see all.
      */
-    public function scopeForUser($query, User $user)
+    public function scopeForUser($query, ?User $user = null)
     {
-        if ($user->isState()) {
+        $user = $user ?? auth()->user();
+        if ($user && $user->isState()) {
             return $query->where('state', $user->state);
         }
         // BB, MoJS, Super Admin see everything

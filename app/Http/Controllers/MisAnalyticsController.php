@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Exports\FmbapMisReportExport;
+use App\Exports\TicketStatusExport;
 use App\Models\PaymentRequest;
 use App\Models\Scheme;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -60,6 +61,20 @@ class MisAnalyticsController extends Controller
 
         $fileName = 'FMBAP_Parliamentary_MIS_Report_' . date('Ymd_His') . '.xlsx';
         return Excel::download(new FmbapMisReportExport($state, $basin, $status), $fileName);
+    }
+
+    /**
+     * Download Simple Ticket Status & Pendency Excel
+     */
+    public function exportTicketsExcel(Request $request)
+    {
+        $user        = auth()->user();
+        $state       = ($user && $user->isState() && !empty($user->state)) ? $user->state : $request->query('state');
+        $status      = $request->query('status');
+        $pendingWith = $request->query('pending_with');
+
+        $fileName = 'FMBAP_Ticket_Status_Tracker_' . date('Ymd_His') . '.xlsx';
+        return Excel::download(new TicketStatusExport($state, $status, $pendingWith), $fileName);
     }
 
     /**
@@ -483,6 +498,131 @@ class MisAnalyticsController extends Controller
             ];
         });
 
+        // ── 9. Ticket Status & Pendency Tracker ─────────────────────────────
+        $ticketQuery = PaymentRequest::with('scheme')->forUser($user)->latest('id');
+        if ($selectedState !== 'ALL') {
+            $ticketQuery->where('state', $selectedState);
+        }
+        $rawTickets = $ticketQuery->get();
+
+        $ticketsList = $rawTickets->map(function ($t) {
+            $scheme = $t->scheme;
+            $schemeName = $scheme?->scheme_name ?? 'N/A';
+            $schemeCode = $scheme?->scheme_code ?? 'N/A';
+            $centralPct = (int)($scheme?->central_share_pct ?: 90);
+            $fundType = "FMBAP Central ({$centralPct}%)";
+            $instalment = $t->instalment_number ? "Instalment #{$t->instalment_number}" : '1st Instalment';
+
+            $claimedCr = (float)($t->requested_amount_cr ?? 0);
+            $bbRecCr = $t->bb_recommended_amount_cr !== null ? (float)$t->bb_recommended_amount_cr : null;
+            $approvedCr = $t->approved_amount_cr !== null ? (float)$t->approved_amount_cr : ($t->status === PaymentRequest::STATUS_APPROVED ? $claimedCr : null);
+
+            $statusLabels = [
+                PaymentRequest::STATUS_DRAFT             => 'Draft (State)',
+                PaymentRequest::STATUS_SUBMITTED_TO_BB   => 'Submitted to BB',
+                PaymentRequest::STATUS_BB_MONITORING     => 'BB Field Monitoring',
+                PaymentRequest::STATUS_FORWARDED_TO_MOJS => 'Forwarded to MoJS',
+                PaymentRequest::STATUS_APPROVED          => 'Approved & Disbursed',
+                PaymentRequest::STATUS_NEEDS_CORRECTION  => 'Clarification Required',
+                PaymentRequest::STATUS_REJECTED          => 'Rejected by Ministry',
+            ];
+            $statusLabel = $statusLabels[$t->status] ?? $t->status;
+
+            $stateName = $t->state ?: ($scheme?->state ?: 'State WRD');
+            $pendingWithParty = 'STATE';
+            switch ($t->status) {
+                case PaymentRequest::STATUS_DRAFT:
+                case PaymentRequest::STATUS_NEEDS_CORRECTION:
+                    $pendingWith = "State Government ({$stateName})";
+                    $pendingWithParty = 'STATE';
+                    break;
+                case PaymentRequest::STATUS_SUBMITTED_TO_BB:
+                case PaymentRequest::STATUS_BB_MONITORING:
+                    $pendingWith = "Brahmaputra Board (BB)";
+                    $pendingWithParty = 'BB';
+                    break;
+                case PaymentRequest::STATUS_FORWARDED_TO_MOJS:
+                    $pendingWith = "Ministry of Jal Shakti (MoJS)";
+                    $pendingWithParty = 'MOJS';
+                    break;
+                case PaymentRequest::STATUS_APPROVED:
+                    $pendingWith = "Settled / Disbursed";
+                    $pendingWithParty = 'SETTLED';
+                    break;
+                case PaymentRequest::STATUS_REJECTED:
+                    $pendingWith = "Closed / Rejected (MoJS)";
+                    $pendingWithParty = 'REJECTED';
+                    break;
+                default:
+                    $pendingWith = "Pending Review";
+                    $pendingWithParty = 'OTHER';
+                    break;
+            }
+
+            $raisedDate = $t->submitted_at ? \Carbon\Carbon::parse($t->submitted_at) : ($t->created_at ? \Carbon\Carbon::parse($t->created_at) : null);
+            $raisedStr = $raisedDate ? $raisedDate->format('d/m/Y') : 'N/A';
+
+            if ($t->status === PaymentRequest::STATUS_APPROVED) {
+                $approvedDate = $t->approved_at ? \Carbon\Carbon::parse($t->approved_at) : \Carbon\Carbon::parse($t->updated_at);
+                $diffDays = $raisedDate ? (int) abs($raisedDate->diffInDays($approvedDate)) : 0;
+                $pendency = $diffDays === 0 ? 'Settled same day' : "Settled in {$diffDays}d";
+                $daysCount = $diffDays;
+            } elseif ($raisedDate) {
+                $diffDays = (int) abs($raisedDate->diffInDays(now()));
+                $pendency = $diffDays === 0 ? 'Today (0d)' : "{$diffDays} days";
+                $daysCount = $diffDays;
+            } else {
+                $pendency = '—';
+                $daysCount = 0;
+            }
+
+            return [
+                'id'                       => $t->id,
+                'ticket_id'                => '#REQ-' . str_pad($t->id, 4, '0', STR_PAD_LEFT),
+                'scheme_id'                => $t->scheme_id,
+                'project_name'             => $schemeName,
+                'scheme_code'              => $schemeCode,
+                'state'                    => $stateName,
+                'district'                 => $scheme?->district ?: ($scheme?->division ?: 'State WRD'),
+                'fund_type'                => $fundType,
+                'project_type'             => $scheme?->project_type ?: 'Flood Management & Erosion Control',
+                'instalment'               => $instalment,
+                'requested_amount_cr'      => $claimedCr,
+                'bb_recommended_amount_cr' => $bbRecCr,
+                'approved_amount_cr'       => $approvedCr,
+                'status'                   => $t->status,
+                'status_label'             => $statusLabel,
+                'pending_with'             => $pendingWith,
+                'pending_with_party'       => $pendingWithParty,
+                'date_raised'              => $raisedStr,
+                'pendency'                 => $pendency,
+                'days_count'               => $daysCount,
+                'sanction_order_no'        => $t->sanction_order_no ?: '—',
+                'remarks'                  => $t->bb_remarks ?: ($t->mojs_remarks ?: ($t->state_remarks ?: '—')),
+            ];
+        });
+
+        $pendingBbCount    = $rawTickets->filter(fn($t) => in_array($t->status, [PaymentRequest::STATUS_SUBMITTED_TO_BB, PaymentRequest::STATUS_BB_MONITORING]))->count();
+        $pendingMojsCount  = $rawTickets->filter(fn($t) => $t->status === PaymentRequest::STATUS_FORWARDED_TO_MOJS)->count();
+        $pendingStateCount = $rawTickets->filter(fn($t) => in_array($t->status, [PaymentRequest::STATUS_DRAFT, PaymentRequest::STATUS_NEEDS_CORRECTION]))->count();
+        $settledCount      = $rawTickets->filter(fn($t) => $t->status === PaymentRequest::STATUS_APPROVED)->count();
+
+        $totalClaimedCr = (float) $rawTickets->sum(fn($t) => (float)($t->requested_amount_cr ?? 0));
+        $pendingClaimsCr = (float) $rawTickets->filter(fn($t) => $t->status !== PaymentRequest::STATUS_APPROVED && $t->status !== PaymentRequest::STATUS_REJECTED)->sum(fn($t) => (float)($t->requested_amount_cr ?? 0));
+        $settledCr = (float) $rawTickets->filter(fn($t) => $t->status === PaymentRequest::STATUS_APPROVED)->sum(fn($t) => (float)($t->approved_amount_cr ?: $t->requested_amount_cr));
+
+        $ticketTracker = [
+            'tickets'                 => $ticketsList,
+            'total_count'             => $rawTickets->count(),
+            'pending_bb_count'        => $pendingBbCount,
+            'pending_mojs_count'      => $pendingMojsCount,
+            'pending_state_count'     => $pendingStateCount,
+            'settled_count'           => $settledCount,
+            'total_claimed_cr'        => round($totalClaimedCr, 2),
+            'pending_claims_cr'       => round($pendingClaimsCr, 2),
+            'settled_cr'              => round($settledCr, 2),
+        ];
+
         return [
             'macro'                 => [
                 'total_schemes'          => $totalSchemes,
@@ -506,6 +646,7 @@ class MisAnalyticsController extends Controller
             'discrepancies'         => $discrepancies,
             'bottlenecks'           => $bottlenecks,
             'parliamentary_list'    => $parliamentaryList,
+            'ticket_tracker'        => $ticketTracker,
         ];
     }
 }

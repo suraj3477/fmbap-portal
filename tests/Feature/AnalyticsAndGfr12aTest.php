@@ -93,6 +93,21 @@ class AnalyticsAndGfr12aTest extends TestCase
         $this->assertTrue(str_contains($response->headers->get('content-disposition'), '.xlsx'));
     }
 
+    public function test_ticket_status_excel_export(): void
+    {
+        $response = $this->actingAs($this->user)->get('/analytics/export-tickets-excel');
+        $response->assertStatus(200);
+        $this->assertTrue(str_contains($response->headers->get('content-disposition'), 'FMBAP_Ticket_Status_Tracker_'));
+        $this->assertTrue(str_contains($response->headers->get('content-disposition'), '.xlsx'));
+    }
+
+    public function test_ticket_status_excel_export_with_filters(): void
+    {
+        $response = $this->actingAs($this->user)->get('/analytics/export-tickets-excel?state=Assam&pending_with=BB');
+        $response->assertStatus(200);
+        $this->assertTrue(str_contains($response->headers->get('content-disposition'), '.xlsx'));
+    }
+
     public function test_analytics_pdf_export(): void
     {
         $response = $this->actingAs($this->user)->get('/analytics/export-pdf');

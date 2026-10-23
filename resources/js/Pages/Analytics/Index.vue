@@ -234,6 +234,97 @@ const pdfExportUrl = computed(() => {
     return `${route('analytics.export-pdf')}?${params.toString()}`;
 });
 
+const excelTicketsExportUrl = computed(() => {
+    const params = new URLSearchParams();
+    if (selectedState.value !== 'ALL') params.append('state', selectedState.value);
+    if (ticketPendingFilter.value !== 'ALL') params.append('pending_with', ticketPendingFilter.value);
+    return `${route('analytics.export-tickets-excel')}?${params.toString()}`;
+});
+
+// Ticket Status & Pendency Tracker state
+const ticketSearchQuery = ref('');
+const ticketPendingFilter = ref('ALL'); // 'ALL' | 'BB' | 'MOJS' | 'STATE' | 'SETTLED'
+const ticketCurrentPage = ref(1);
+const ticketPageSize = ref(15);
+
+const filteredTickets = computed(() => {
+    const tracker = props.analytics?.ticket_tracker;
+    if (!tracker || !tracker.tickets) return [];
+    let list = tracker.tickets;
+
+    if (ticketPendingFilter.value !== 'ALL') {
+        list = list.filter(t => t.pending_with_party === ticketPendingFilter.value);
+    }
+
+    const q = ticketSearchQuery.value.trim().toLowerCase();
+    if (q) {
+        list = list.filter(t =>
+            (t.ticket_id && t.ticket_id.toLowerCase().includes(q)) ||
+            (t.project_name && t.project_name.toLowerCase().includes(q)) ||
+            (t.scheme_code && t.scheme_code.toLowerCase().includes(q)) ||
+            (t.state && t.state.toLowerCase().includes(q)) ||
+            (t.district && t.district.toLowerCase().includes(q)) ||
+            (t.fund_type && t.fund_type.toLowerCase().includes(q)) ||
+            (t.pending_with && t.pending_with.toLowerCase().includes(q)) ||
+            (t.status_label && t.status_label.toLowerCase().includes(q)) ||
+            (t.sanction_order_no && t.sanction_order_no.toLowerCase().includes(q))
+        );
+    }
+
+    return list;
+});
+
+const paginatedTickets = computed(() => {
+    if (ticketPageSize.value === -1) return filteredTickets.value;
+    const start = (ticketCurrentPage.value - 1) * ticketPageSize.value;
+    return filteredTickets.value.slice(start, start + ticketPageSize.value);
+});
+
+const totalTicketPages = computed(() => {
+    if (ticketPageSize.value === -1) return 1;
+    return Math.ceil(filteredTickets.value.length / ticketPageSize.value) || 1;
+});
+
+const pendingPartyBadge = (party) => {
+    switch (party) {
+        case 'BB':
+            return {
+                bg: 'bg-purple-100 text-purple-900 border-purple-300',
+                dot: 'bg-purple-600',
+                icon: '🏢',
+                text: 'Brahmaputra Board (BB)',
+            };
+        case 'MOJS':
+            return {
+                bg: 'bg-blue-100 text-blue-900 border-blue-300',
+                dot: 'bg-blue-600',
+                icon: '🏛️',
+                text: 'Ministry of Jal Shakti (MoJS)',
+            };
+        case 'STATE':
+            return {
+                bg: 'bg-amber-100 text-amber-900 border-amber-300',
+                dot: 'bg-amber-600',
+                icon: '📍',
+                text: 'State Government',
+            };
+        case 'SETTLED':
+            return {
+                bg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+                dot: 'bg-emerald-600',
+                icon: '✅',
+                text: 'Settled & Disbursed',
+            };
+        default:
+            return {
+                bg: 'bg-slate-100 text-slate-800 border-slate-300',
+                dot: 'bg-slate-500',
+                icon: '⏳',
+                text: 'Under Review',
+            };
+    }
+};
+
 // Filtered & Sorted Parliamentary Register
 const filteredParliamentaryList = computed(() => {
     let list = props.analytics.parliamentary_list || [];
@@ -364,6 +455,15 @@ const donutSegments = computed(() => {
                     >
                         <span>{{ copySuccess ? '✅ Copied to Clipboard!' : '📋 Copy for PQ Reply' }}</span>
                     </button>
+
+                    <a
+                        :href="excelTicketsExportUrl"
+                        target="_blank"
+                        class="inline-flex items-center gap-1.5 px-3 py-2 bg-teal-700 hover:bg-teal-800 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+                        title="Download simple Excel spreadsheet with ticket status, pending authority, project, fund, and amount"
+                    >
+                        <span>📗 Ticket Status (Excel)</span>
+                    </a>
 
                     <a
                         :href="excelExportUrl"
@@ -537,6 +637,18 @@ const donutSegments = computed(() => {
 
                 <button
                     type="button"
+                    @click="activeTab = 'TICKET_TRACKER'"
+                    :class="activeTab === 'TICKET_TRACKER' ? 'border-b-2 border-indigo-600 text-indigo-700 bg-indigo-50/60 font-black' : 'text-slate-500 hover:text-slate-900'"
+                    class="py-3 px-3.5 transition cursor-pointer flex items-center gap-2 rounded-t-xl"
+                >
+                    <span>🎫 Ticket Status &amp; Pendency</span>
+                    <span v-if="analytics.ticket_tracker?.total_count" class="px-2 py-0.5 rounded-full text-[10px] bg-indigo-100 text-indigo-800 font-black border border-indigo-200">
+                        {{ analytics.ticket_tracker.total_count }}
+                    </span>
+                </button>
+
+                <button
+                    type="button"
                     @click="activeTab = 'STATE_SCORECARD'"
                     :class="activeTab === 'STATE_SCORECARD' ? 'border-b-2 border-[#0F4C9F] text-[#0F4C9F] bg-blue-50/50' : 'text-slate-500 hover:text-slate-900'"
                     class="py-3 px-3.5 transition cursor-pointer flex items-center gap-2 rounded-t-xl"
@@ -583,6 +695,33 @@ const donutSegments = computed(() => {
                         <div>
                             <h3 class="text-base font-black text-slate-900">National Strategic Visual Analytics</h3>
                             <p class="text-xs text-slate-500">Real-time allocation vs disbursal velocity, progress distribution, and work-type breakdown.</p>
+                        </div>
+                    </div>
+
+                    <!-- Live Ticket Pipeline Quick Ribbon -->
+                    <div
+                        @click="activeTab = 'TICKET_TRACKER'"
+                        class="p-4 rounded-xl bg-gradient-to-r from-indigo-900 via-blue-900 to-slate-900 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs hover:shadow-md transition cursor-pointer group"
+                    >
+                        <div class="flex items-center gap-3">
+                            <span class="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center text-xl">🎫</span>
+                            <div>
+                                <div class="font-black text-sm flex items-center gap-2">
+                                    <span>Fund Release Ticket Pipeline Status</span>
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-500/40 border border-indigo-400/30">Live Workflow</span>
+                                </div>
+                                <div class="text-xs text-indigo-200 mt-0.5">
+                                    {{ analytics.ticket_tracker?.total_count || 0 }} total claims raised &bull;
+                                    <strong class="text-white font-bold">{{ analytics.ticket_tracker?.pending_bb_count || 0 }}</strong> pending with BB &bull;
+                                    <strong class="text-white font-bold">{{ analytics.ticket_tracker?.pending_mojs_count || 0 }}</strong> pending with MoJS &bull;
+                                    <strong class="text-white font-bold">₹{{ analytics.ticket_tracker?.pending_claims_cr || 0 }} Cr</strong> in review
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-bold text-indigo-200 group-hover:text-white transition flex items-center gap-1">
+                                Open Ticket &amp; Pendency Tracker →
+                            </span>
                         </div>
                     </div>
 
@@ -739,6 +878,332 @@ const donutSegments = computed(() => {
                                     </div>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- ═════ TAB: TICKET STATUS & PENDENCY TRACKER ═════ -->
+                <div v-if="activeTab === 'TICKET_TRACKER'" class="space-y-6">
+                    
+                    <!-- Header with Title & Direct Excel Download -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <span class="px-2.5 py-0.5 rounded-md text-[11px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
+                                    STATUTORY CLAIMS &amp; TICKETS
+                                </span>
+                                <h3 class="text-base sm:text-lg font-black text-slate-900">
+                                    Ticket Status &amp; Pendency Radar
+                                </h3>
+                            </div>
+                            <p class="text-xs text-slate-500 mt-1">
+                                Real-time monitoring of raised fund release requests, which project, which fund component, what amount, and pending authority.
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <a
+                                :href="excelTicketsExportUrl"
+                                target="_blank"
+                                class="inline-flex items-center gap-2 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black rounded-xl shadow-xs hover:shadow transition cursor-pointer"
+                                title="Download simple Excel spreadsheet with ticket status, pending authority, project, fund, and amount"
+                            >
+                                <svg class="w-4 h-4 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                                </svg>
+                                <span>Download Ticket Status (Excel)</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- 6-Metric Executive KPI Strip -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                        
+                        <!-- KPI 1: Total Tickets -->
+                        <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Total Tickets Raised</span>
+                            <div class="text-2xl font-black text-slate-900 leading-tight">
+                                {{ analytics.ticket_tracker?.total_count || 0 }}
+                            </div>
+                            <span class="text-[10px] font-bold text-slate-500">Statutory Claims</span>
+                        </div>
+
+                        <!-- KPI 2: Pending with BB -->
+                        <div class="bg-purple-50/70 p-3.5 rounded-xl border border-purple-200 space-y-1">
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 block">Pending With BB</span>
+                            <div class="text-2xl font-black text-purple-950 leading-tight">
+                                {{ analytics.ticket_tracker?.pending_bb_count || 0 }}
+                            </div>
+                            <span class="text-[10px] font-bold text-purple-600">Review &amp; Inspection</span>
+                        </div>
+
+                        <!-- KPI 3: Pending with MoJS -->
+                        <div class="bg-blue-50/70 p-3.5 rounded-xl border border-blue-200 space-y-1">
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 block">Pending With MoJS</span>
+                            <div class="text-2xl font-black text-blue-950 leading-tight">
+                                {{ analytics.ticket_tracker?.pending_mojs_count || 0 }}
+                            </div>
+                            <span class="text-[10px] font-bold text-blue-600">Sanction Approval</span>
+                        </div>
+
+                        <!-- KPI 4: Pending with State -->
+                        <div class="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200 space-y-1">
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 block">Pending With State</span>
+                            <div class="text-2xl font-black text-amber-950 leading-tight">
+                                {{ analytics.ticket_tracker?.pending_state_count || 0 }}
+                            </div>
+                            <span class="text-[10px] font-bold text-amber-700">Drafts / Clarifications</span>
+                        </div>
+
+                        <!-- KPI 5: Pending Pipeline Amount -->
+                        <div class="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 space-y-1">
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 block">Pipeline Amount</span>
+                            <div class="text-2xl font-black text-indigo-950 leading-tight">
+                                ₹{{ Number(analytics.ticket_tracker?.pending_claims_cr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) }}
+                                <span class="text-xs font-bold text-indigo-600">Cr</span>
+                            </div>
+                            <span class="text-[10px] font-bold text-indigo-600">Under Review</span>
+                        </div>
+
+                        <!-- KPI 6: Settled & Disbursed -->
+                        <div class="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200 space-y-1">
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">Settled &amp; Disbursed</span>
+                            <div class="text-2xl font-black text-emerald-950 leading-tight">
+                                ₹{{ Number(analytics.ticket_tracker?.settled_cr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) }}
+                                <span class="text-xs font-bold text-emerald-700">Cr</span>
+                            </div>
+                            <span class="text-[10px] font-bold text-emerald-700">{{ analytics.ticket_tracker?.settled_count || 0 }} Claims Completed</span>
+                        </div>
+
+                    </div>
+
+                    <!-- Filter Bar & Search -->
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                        
+                        <!-- Filter Pills -->
+                        <div class="flex flex-wrap items-center gap-1.5 text-xs font-bold">
+                            <button
+                                type="button"
+                                @click="ticketPendingFilter = 'ALL'; ticketCurrentPage = 1;"
+                                :class="ticketPendingFilter === 'ALL' ? 'bg-[#0F4C9F] text-white shadow-2xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'"
+                                class="px-3 py-1.5 rounded-lg transition cursor-pointer"
+                            >
+                                All ({{ analytics.ticket_tracker?.total_count || 0 }})
+                            </button>
+                            <button
+                                type="button"
+                                @click="ticketPendingFilter = 'BB'; ticketCurrentPage = 1;"
+                                :class="ticketPendingFilter === 'BB' ? 'bg-purple-700 text-white shadow-2xs' : 'bg-white text-purple-900 hover:bg-purple-50 border border-purple-200'"
+                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>🏢 Pending BB</span>
+                                <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'BB' ? 'bg-purple-900 text-purple-100' : 'bg-purple-100 text-purple-800'">
+                                    {{ analytics.ticket_tracker?.pending_bb_count || 0 }}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                @click="ticketPendingFilter = 'MOJS'; ticketCurrentPage = 1;"
+                                :class="ticketPendingFilter === 'MOJS' ? 'bg-blue-700 text-white shadow-2xs' : 'bg-white text-blue-900 hover:bg-blue-50 border border-blue-200'"
+                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>🏛️ Pending MoJS</span>
+                                <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'MOJS' ? 'bg-blue-900 text-blue-100' : 'bg-blue-100 text-blue-800'">
+                                    {{ analytics.ticket_tracker?.pending_mojs_count || 0 }}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                @click="ticketPendingFilter = 'STATE'; ticketCurrentPage = 1;"
+                                :class="ticketPendingFilter === 'STATE' ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-200'"
+                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>📍 Pending State</span>
+                                <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'STATE' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-800'">
+                                    {{ analytics.ticket_tracker?.pending_state_count || 0 }}
+                                </span>
+                            </button>
+                            <button
+                                type="button"
+                                @click="ticketPendingFilter = 'SETTLED'; ticketCurrentPage = 1;"
+                                :class="ticketPendingFilter === 'SETTLED' ? 'bg-emerald-700 text-white shadow-2xs' : 'bg-white text-emerald-900 hover:bg-emerald-50 border border-emerald-200'"
+                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                            >
+                                <span>✅ Settled</span>
+                                <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'SETTLED' ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-100 text-emerald-800'">
+                                    {{ analytics.ticket_tracker?.settled_count || 0 }}
+                                </span>
+                            </button>
+                        </div>
+
+                        <!-- Search Input -->
+                        <div class="relative w-full sm:w-72">
+                            <input
+                                v-model="ticketSearchQuery"
+                                type="text"
+                                placeholder="Search project, ticket, scheme code..."
+                                class="w-full text-xs rounded-lg border-slate-300 pl-8 pr-3 py-1.5 focus:border-[#0F4C9F] focus:ring-[#0F4C9F]"
+                            />
+                            <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                            </svg>
+                        </div>
+
+                    </div>
+
+                    <!-- Data Table -->
+                    <div class="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs bg-white">
+                        <table class="w-full text-xs text-left">
+                            <thead class="bg-slate-100/80 text-slate-700 uppercase font-black text-[10px] tracking-wider border-b border-slate-200">
+                                <tr>
+                                    <th class="py-3 px-3.5">Ticket ID</th>
+                                    <th class="py-3 px-3">State &amp; District</th>
+                                    <th class="py-3 px-4">Which Project (Scheme)</th>
+                                    <th class="py-3 px-3">Which Fund</th>
+                                    <th class="py-3 px-3 text-right">What Amount</th>
+                                    <th class="py-3 px-3 text-center">Ticket Status</th>
+                                    <th class="py-3 px-3.5 text-center">Pending With Whom</th>
+                                    <th class="py-3 px-3 text-center">Date &amp; Ageing</th>
+                                    <th class="py-3 px-3 text-center">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                <tr
+                                    v-for="t in paginatedTickets"
+                                    :key="t.id"
+                                    class="hover:bg-slate-50/80 transition"
+                                >
+                                    <!-- Ticket ID & Instalment -->
+                                    <td class="py-3.5 px-3.5 whitespace-nowrap">
+                                        <div class="font-black text-slate-900 font-mono text-xs">
+                                            {{ t.ticket_id }}
+                                        </div>
+                                        <span class="inline-block mt-0.5 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                            {{ t.instalment }}
+                                        </span>
+                                    </td>
+
+                                    <!-- State & District -->
+                                    <td class="py-3.5 px-3 whitespace-nowrap">
+                                        <div class="font-bold text-slate-900">{{ t.state }}</div>
+                                        <div class="text-[10px] text-slate-500 font-semibold">{{ t.district }}</div>
+                                    </td>
+
+                                    <!-- Which Project -->
+                                    <td class="py-3.5 px-4 max-w-xs">
+                                        <div class="font-bold text-slate-900 leading-snug line-clamp-2" :title="t.project_name">
+                                            {{ t.project_name }}
+                                        </div>
+                                        <div class="mt-1 flex items-center gap-1.5">
+                                            <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#0F4C9F] border border-blue-200">
+                                                {{ t.scheme_code }}
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    <!-- Which Fund -->
+                                    <td class="py-3.5 px-3 whitespace-nowrap">
+                                        <div class="font-bold text-slate-800">{{ t.fund_type }}</div>
+                                        <div class="text-[10px] text-slate-500 font-semibold truncate max-w-[140px]" :title="t.project_type">
+                                            {{ t.project_type }}
+                                        </div>
+                                    </td>
+
+                                    <!-- What Amount -->
+                                    <td class="py-3.5 px-3 text-right whitespace-nowrap">
+                                        <div class="font-black font-mono text-slate-900 text-xs">
+                                            ₹{{ Number(t.requested_amount_cr).toFixed(2) }} Cr
+                                        </div>
+                                        <div v-if="t.approved_amount_cr !== null" class="text-[10px] font-mono text-emerald-700 font-bold">
+                                            Approved: ₹{{ Number(t.approved_amount_cr).toFixed(2) }} Cr
+                                        </div>
+                                        <div v-else-if="t.bb_recommended_amount_cr !== null" class="text-[10px] font-mono text-purple-700 font-bold">
+                                            BB Rec: ₹{{ Number(t.bb_recommended_amount_cr).toFixed(2) }} Cr
+                                        </div>
+                                    </td>
+
+                                    <!-- Status -->
+                                    <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                                        <span
+                                            class="inline-block px-2.5 py-1 rounded-full text-[10px] font-black border"
+                                            :class="statusBadgeClass(t.status, 0)"
+                                        >
+                                            {{ t.status_label }}
+                                        </span>
+                                    </td>
+
+                                    <!-- Pending With Whom -->
+                                    <td class="py-3.5 px-3.5 text-center whitespace-nowrap">
+                                        <span
+                                            class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black border shadow-2xs"
+                                            :class="pendingPartyBadge(t.pending_with_party).bg"
+                                        >
+                                            <span class="w-1.5 h-1.5 rounded-full" :class="pendingPartyBadge(t.pending_with_party).dot"></span>
+                                            <span>{{ pendingPartyBadge(t.pending_with_party).icon }} {{ t.pending_with }}</span>
+                                        </span>
+                                    </td>
+
+                                    <!-- Date & Ageing -->
+                                    <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                                        <div class="text-[11px] font-mono font-bold text-slate-700">{{ t.date_raised }}</div>
+                                        <div class="text-[10px] font-bold mt-0.5"
+                                            :class="t.days_count > 30 ? 'text-rose-700 font-black' : (t.days_count > 14 ? 'text-amber-700' : 'text-emerald-700')"
+                                        >
+                                            {{ t.pendency }}
+                                        </div>
+                                    </td>
+
+                                    <!-- Action -->
+                                    <td class="py-3.5 px-3 text-center whitespace-nowrap">
+                                        <Link
+                                            :href="route('fund-release.show', t.id)"
+                                            class="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0F4C9F] text-[11px] font-black rounded-lg border border-blue-200 transition"
+                                        >
+                                            <span>View Claim</span>
+                                            <span>↗</span>
+                                        </Link>
+                                    </td>
+                                </tr>
+
+                                <tr v-if="filteredTickets.length === 0">
+                                    <td colspan="9" class="py-12 text-center text-slate-400 font-medium text-xs">
+                                        <div class="text-3xl mb-2">🎫</div>
+                                        <div class="font-bold text-slate-700 text-sm">No tickets found matching the selected criteria</div>
+                                        <p class="text-slate-400 text-xs mt-1">Try clearing filters or search query.</p>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Pagination -->
+                    <div v-if="filteredTickets.length > 0" class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 pt-2">
+                        <div class="font-medium">
+                            Showing <strong class="text-slate-900 font-bold">{{ ((ticketCurrentPage - 1) * ticketPageSize) + 1 }}</strong>
+                            to <strong class="text-slate-900 font-bold">{{ Math.min(ticketCurrentPage * ticketPageSize, filteredTickets.length) }}</strong>
+                            of <strong class="text-slate-900 font-bold">{{ filteredTickets.length }}</strong> tickets
+                        </div>
+
+                        <div class="flex items-center gap-2">
+                            <button
+                                type="button"
+                                :disabled="ticketCurrentPage <= 1"
+                                @click="ticketCurrentPage--"
+                                class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-xs transition"
+                            >
+                                ← Previous
+                            </button>
+                            <span class="px-3 py-1 bg-slate-100 rounded-md font-bold text-[11px] text-slate-700">
+                                Page {{ ticketCurrentPage }} of {{ totalTicketPages }}
+                            </span>
+                            <button
+                                type="button"
+                                :disabled="ticketCurrentPage >= totalTicketPages"
+                                @click="ticketCurrentPage++"
+                                class="px-3 py-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-bold text-xs transition"
+                            >
+                                Next →
+                            </button>
                         </div>
                     </div>
 
