@@ -39,7 +39,10 @@ class PaymentRequestController extends Controller
         $preselectedSchemeId = $request->query('scheme_id');
 
         if ($preselectedSchemeId) {
-            $targetScheme = Scheme::find($preselectedSchemeId);
+            $targetScheme = Scheme::forUser($user)->find($preselectedSchemeId);
+            if (!$targetScheme && $user->isState()) {
+                abort(403, 'Unauthorized access to scheme from another state.');
+            }
             if ($targetScheme && $targetScheme->hasActiveClaim()) {
                 $activeClaim = $targetScheme->getActiveClaim();
                 if ($activeClaim) {
@@ -53,7 +56,8 @@ class PaymentRequestController extends Controller
             }
         }
 
-        $availableSchemes = Scheme::active()
+        $availableSchemes = Scheme::forUser($user)
+            ->active()
             ->with([
                 'fmbapProject',
                 'paymentRequests' => function ($q) {
@@ -68,7 +72,7 @@ class PaymentRequestController extends Controller
             ->get();
 
         if ($preselectedSchemeId && !$availableSchemes->contains('id', (int) $preselectedSchemeId)) {
-            $preScheme = Scheme::with([
+            $preScheme = Scheme::forUser($user)->with([
                 'fmbapProject',
                 'paymentRequests' => function ($q) {
                     $q->orderBy('instalment_number', 'asc')->orderBy('id', 'asc');
@@ -166,7 +170,7 @@ class PaymentRequestController extends Controller
             // Require scheme for new request
             $request->validate(['scheme_id' => 'required|exists:schemes,id']);
 
-            $targetScheme = Scheme::findOrFail($validated['scheme_id']);
+            $targetScheme = Scheme::forUser($user)->findOrFail($validated['scheme_id']);
             $existingActive = $targetScheme->paymentRequests()
                 ->whereNotIn('status', [PaymentRequest::STATUS_APPROVED, PaymentRequest::STATUS_REJECTED])
                 ->latest('id')
@@ -326,6 +330,11 @@ class PaymentRequestController extends Controller
      */
     public function show(PaymentRequest $fund_release, DossierService $dossierService)
     {
+        $user = auth()->user();
+        if ($user && $user->isState() && $fund_release->state !== $user->state && $fund_release->user_id !== $user->id) {
+            abort(403, 'Unauthorized.');
+        }
+
         $fund_release->load(['revisions.user', 'scheme.fmbapProject']);
         $dossier = $dossierService->build($fund_release);
         $steps = $dossierService->getWorkflowSteps($fund_release->status);

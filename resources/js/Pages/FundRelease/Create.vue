@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import WizardStepIndicator from '@/Components/WizardStepIndicator.vue';
@@ -22,6 +22,7 @@ const props = defineProps({
     }
 });
 
+const page = usePage();
 const currentStep = ref(1);
 const steps = ['Scheme Details', 'Financial Request', 'Progress Metrics', 'Supporting Docs'];
 const isSubmitting = ref(false);
@@ -307,9 +308,11 @@ const saveStep = async (isFinalSubmit = false) => {
         formData.append('is_final_submit', 1);
     }
 
-    const metaToken = typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]') : null;
-    if (metaToken && metaToken.content) {
-        formData.append('_token', metaToken.content);
+    const pageToken = page.props.csrf_token;
+    const metaToken = typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]')?.content : null;
+    const effectiveToken = pageToken || metaToken;
+    if (effectiveToken) {
+        formData.append('_token', effectiveToken);
     }
 
     if (currentStep.value === 1) {
@@ -352,7 +355,10 @@ const saveStep = async (isFinalSubmit = false) => {
 
     try {
         const response = await axios.post(route('fund-release.store'), formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
+            headers: {
+                'Content-Type': 'multipart/form-data',
+                ...(effectiveToken ? { 'X-CSRF-TOKEN': effectiveToken } : {})
+            }
         });
         
         form.value.payment_request_id = response.data.payment_request_id;
@@ -364,7 +370,18 @@ const saveStep = async (isFinalSubmit = false) => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     } catch (error) {
-        errorMsg.value = error.response?.data?.message || 'An error occurred while saving. Please check your entries.';
+        if (error.response?.status === 419) {
+            try {
+                const res = await axios.get('/csrf-token');
+                if (res.data?.csrf_token && typeof document !== 'undefined') {
+                    const meta = document.querySelector('meta[name="csrf-token"]');
+                    if (meta) meta.content = res.data.csrf_token;
+                }
+            } catch {}
+            errorMsg.value = 'Security session refreshed. Please click Proceed to Step 2 again.';
+        } else {
+            errorMsg.value = error.response?.data?.message || 'An error occurred while saving. Please check your entries.';
+        }
     } finally {
         isSubmitting.value = false;
     }

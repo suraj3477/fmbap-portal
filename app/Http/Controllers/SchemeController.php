@@ -16,14 +16,11 @@ class SchemeController extends Controller
         $this->excelService = $excelService;
     }
 
-    /**
-     * Full Scheme Master Catalogue page.
-     */
     public function index(Request $request)
     {
         $user = auth()->user();
 
-        $schemes = Scheme::with([
+        $schemes = Scheme::forUser($user)->with([
             'paymentRequests' => function ($q) {
                 $q->with('bbMonitoringReport')->latest();
             },
@@ -111,10 +108,11 @@ class SchemeController extends Controller
             $totalCurtailedCr += $curtailedSum;
         }
 
-        $totalSanctioned = Scheme::sum('sanctioned_amount_cr');
-        $completedCount  = Scheme::where('physical_status', 'Completed')->count();
-        $totalCount      = Scheme::count();
-        $avgProgress     = $totalCount > 0 ? round(Scheme::avg('physical_progress_pct'), 1) : 0;
+        $statsQuery = Scheme::forUser($user);
+        $totalSanctioned = (clone $statsQuery)->sum('sanctioned_amount_cr');
+        $completedCount  = (clone $statsQuery)->where('physical_status', 'Completed')->count();
+        $totalCount      = (clone $statsQuery)->count();
+        $avgProgress     = $totalCount > 0 ? round((clone $statsQuery)->avg('physical_progress_pct'), 1) : 0;
 
         return Inertia::render('Schemes/Index', [
             'schemes' => $schemes,
@@ -269,7 +267,9 @@ class SchemeController extends Controller
 
         $validated['central_share_pct'] = $validated['central_share_pct'] ?? 90;
         $validated['state_share_pct'] = $validated['state_share_pct'] ?? 10;
-        $validated['state'] = $validated['state'] ?? (auth()->user()->state ?? 'Assam');
+        $validated['state'] = (auth()->user()->isState() && auth()->user()->state)
+            ? auth()->user()->state
+            : ($validated['state'] ?? (auth()->user()->state ?? 'Assam'));
         $validated['river_basin'] = $validated['river_basin'] ?? 'Brahmaputra';
         $validated['plan_period'] = $validated['plan_period'] ?? 'XI Plan';
         $validated['physical_status'] = $validated['physical_status'] ?? 'Ongoing';
@@ -286,7 +286,10 @@ class SchemeController extends Controller
      */
     public function nextCode(Request $request)
     {
-        $state = $request->query('state', auth()->user()->state ?? 'Assam');
+        $user = auth()->user();
+        $state = ($user && $user->isState() && $user->state)
+            ? $user->state
+            : $request->query('state', $user?->state ?? 'Assam');
         $prefix = match (strtolower(trim($state))) {
             'assam'             => 'AS',
             'arunachal pradesh' => 'AR',
@@ -330,7 +333,7 @@ class SchemeController extends Controller
      */
     public function apiSearch(Request $request)
     {
-        $query = Scheme::active();
+        $query = Scheme::forUser(auth()->user())->active();
 
         if ($request->filled('q')) {
             $searchTerm = '%' . trim($request->q) . '%';

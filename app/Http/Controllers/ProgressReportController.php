@@ -104,6 +104,11 @@ class ProgressReportController extends Controller
      */
     public function schemeBaseline(Scheme $scheme)
     {
+        $user = auth()->user();
+        if ($user && $user->isState() && $scheme->state !== $user->state) {
+            abort(403, 'Unauthorized.');
+        }
+
         // 1. Last reported Fund Release claim
         $lastFundRelease = PaymentRequest::where('scheme_id', $scheme->id)
             ->latest('id')
@@ -187,7 +192,7 @@ class ProgressReportController extends Controller
         ]);
 
         $user = auth()->user();
-        $scheme = Scheme::findOrFail($validated['scheme_id']);
+        $scheme = Scheme::forUser($user)->findOrFail($validated['scheme_id']);
 
         // Check if report already exists for this scheme and month/year
         $existing = ProgressReport::where('scheme_id', $scheme->id)
@@ -281,6 +286,11 @@ class ProgressReportController extends Controller
      */
     public function show(ProgressReport $progress_report)
     {
+        $user = auth()->user();
+        if ($user && $user->isState() && $progress_report->scheme && $progress_report->scheme->state !== $user->state && $progress_report->user_id !== $user->id) {
+            abort(403, 'Unauthorized.');
+        }
+
         $progress_report->load(['scheme.fmbapProject', 'user', 'lastPaymentRequest', 'auditLogs.user']);
 
         // Historical progression reports for the same scheme

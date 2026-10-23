@@ -35,6 +35,11 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+// Fresh CSRF Token endpoint for SPA/Inertia requests
+Route::get('/csrf-token', function () {
+    return response()->json(['csrf_token' => csrf_token()]);
+})->name('csrf.token');
+
 // Authenticated & Approved User Routes
 Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     
@@ -46,16 +51,17 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         $userRequests = \App\Models\PaymentRequest::forUser($user)->with('scheme');
         $approvedRequests = (clone $userRequests)->where('status', \App\Models\PaymentRequest::STATUS_APPROVED)->get();
 
-        $totalSanctioned = \App\Models\Scheme::sum('sanctioned_amount_cr');
+        $statsSchemeQuery = \App\Models\Scheme::forUser($user);
+        $totalSanctioned = (clone $statsSchemeQuery)->sum('sanctioned_amount_cr');
         $totalReleased = $approvedRequests->sum(function($r) {
             return $r->approved_amount_cr !== null ? (float)$r->approved_amount_cr : (float)$r->requested_amount_cr;
         });
 
-        $totalSchemes = \App\Models\Scheme::count();
-        $completedSchemes = \App\Models\Scheme::where('physical_status', 'Completed')->count();
+        $totalSchemes = (clone $statsSchemeQuery)->count();
+        $completedSchemes = (clone $statsSchemeQuery)->where('physical_status', 'Completed')->count();
         $ongoingSchemes = $totalSchemes - $completedSchemes;
         $avgPhysical = $totalSchemes > 0
-            ? round(\App\Models\Scheme::avg('physical_progress_pct'), 1)
+            ? round((clone $statsSchemeQuery)->avg('physical_progress_pct'), 1)
             : 0;
 
         $summary = [
@@ -69,7 +75,7 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
 
         $moduleCounts = [
             'fund_release' => \App\Models\PaymentRequest::forUser($user)->count(),
-            'monitoring_requests' => \App\Models\PaymentRequest::whereIn('status', [
+            'monitoring_requests' => \App\Models\PaymentRequest::forUser($user)->whereIn('status', [
                 \App\Models\PaymentRequest::STATUS_SUBMITTED_TO_BB,
                 \App\Models\PaymentRequest::STATUS_BB_MONITORING,
                 \App\Models\PaymentRequest::STATUS_FORWARDED_TO_MOJS,
@@ -79,16 +85,16 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
         ];
 
         // Scheme catalogue with related project data
-        $schemes = \App\Models\Scheme::with([
+        $schemes = \App\Models\Scheme::forUser($user)->with([
             'paymentRequests' => function ($q) use ($user) {
-                if ($user->role === 'state_official') {
-                    $q->where('user_id', $user->id);
+                if ($user->isState()) {
+                    $q->where('state', $user->state);
                 }
                 $q->latest();
             },
             'progressReports' => function ($q) use ($user) {
-                if ($user->role === 'state_official') {
-                    $q->where('user_id', $user->id);
+                if ($user->isState()) {
+                    $q->where('state', $user->state);
                 }
                 $q->latest()->select('id','scheme_id','status','physical_progress_pct','financial_progress_pct','reporting_period','created_at');
             },

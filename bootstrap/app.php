@@ -23,10 +23,17 @@ $app = Application::configure(basePath: dirname(__DIR__))
             'approved' => \App\Http\Middleware\EnsureAccountIsApproved::class,
         ]);
 
-        // Exempt public auth actions from CSRF token expiration on serverless
+        // Exempt public auth actions and authenticated multi-step AJAX wizard endpoints from token mismatch
         $middleware->validateCsrfTokens(except: [
             'login',
             'logout',
+            'fund-release',
+            'fund-release/*',
+            'progress-reports',
+            'progress-reports/*',
+            'monitoring-requests/*',
+            'schemes/parse-excel',
+            'schemes/import-excel',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -320,6 +320,9 @@ const openAddModal = (mode = 'manual') => {
     modalMode.value = mode;
     isModalOpen.value = true;
     manualForm.clearErrors();
+    if (user.value?.role === 'state_official' && user.value?.state) {
+        manualForm.state = user.value.state;
+    }
     if (mode === 'manual' && !manualForm.scheme_code) {
         fetchNextCode();
     }
@@ -562,8 +565,12 @@ const submitManualScheme = () => {
 
                 <!-- Dropdowns & Status Pills -->
                 <div class="flex items-center gap-2.5 flex-wrap w-full md:w-auto">
-                    <!-- State Filter -->
-                    <div class="flex items-center gap-1.5">
+                    <!-- State Filter / Indicator -->
+                    <div v-if="user?.role === 'state_official'" class="flex items-center gap-1.5 px-2.5 py-1.5 bg-blue-50 border border-blue-200 rounded-lg text-xs font-bold text-[#0F4C9F]">
+                        <span class="w-1.5 h-1.5 rounded-full bg-[#0F4C9F]"></span>
+                        <span>State: {{ user?.state || 'Assam' }}</span>
+                    </div>
+                    <div v-else class="flex items-center gap-1.5">
                         <span class="text-slate-500 font-bold uppercase text-[10px]">State:</span>
                         <select
                             v-model="selectedState"
@@ -836,30 +843,69 @@ const submitManualScheme = () => {
                                                         {{ scheme.scheme_name }} ({{ scheme.scheme_code }})
                                                     </h4>
                                                 </div>
-                                                <div v-if="['state_official', 'super_admin'].includes(user?.role)" class="flex items-center gap-2">
-                                                    <template v-if="scheme.has_active_claim && scheme.active_claim">
-                                                        <Link
-                                                            :href="route('fund-release.show', scheme.active_claim.id)"
-                                                            class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1.5"
-                                                            :title="'Claim #' + scheme.active_claim.id + ' is already under processing (' + (scheme.active_claim.status || '').replace(/_/g, ' ') + '). Only one active claim allowed at a time until fulfilled.'"
-                                                        >
-                                                            <span>⏳</span> Claim #{{ scheme.active_claim.id }} in Progress ({{ (scheme.active_claim.status || '').replace(/_/g, ' ') }})
-                                                        </Link>
-                                                        <Link
-                                                            v-if="['DRAFT', 'NEEDS_CORRECTION'].includes(scheme.active_claim.status)"
-                                                            :href="route('fund-release.edit', scheme.active_claim.id)"
-                                                            class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1"
-                                                        >
-                                                            <span>✏️</span> Resume/Edit
-                                                        </Link>
+                                                <div class="flex items-center gap-2 flex-wrap">
+                                                    <!-- State Official & Super Admin Claim Actions -->
+                                                    <template v-if="['state_official', 'super_admin'].includes(user?.role)">
+                                                        <template v-if="scheme.has_active_claim && scheme.active_claim">
+                                                            <Link
+                                                                :href="route('fund-release.show', scheme.active_claim.id)"
+                                                                class="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1.5"
+                                                                :title="'Claim #' + scheme.active_claim.id + ' is under review (' + (scheme.active_claim.status || '').replace(/_/g, ' ') + '). Instalment #' + (scheme.next_suggested_instalment || 2) + ' unlocks once this claim is approved by MoJS.'"
+                                                            >
+                                                                <span>⏳</span> Claim #{{ scheme.active_claim.id }} in Progress ({{ (scheme.active_claim.status || '').replace(/_/g, ' ') }})
+                                                            </Link>
+                                                            <Link
+                                                                v-if="['DRAFT', 'NEEDS_CORRECTION'].includes(scheme.active_claim.status)"
+                                                                :href="route('fund-release.edit', scheme.active_claim.id)"
+                                                                class="px-2.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1"
+                                                            >
+                                                                <span>✏️</span> Resume/Edit
+                                                            </Link>
+                                                        </template>
+                                                        <template v-else-if="scheme.balance_central_share_cr > 0 || (scheme.approved_claims_release_cr && scheme.approved_claims_release_cr > 0)">
+                                                            <Link
+                                                                :href="route('fund-release.create', { scheme_id: scheme.id })"
+                                                                class="px-3 py-1.5 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1.5"
+                                                            >
+                                                                <span>⚡</span> Initiate Next Claim (Instalment #{{ scheme.next_suggested_instalment || 1 }})
+                                                            </Link>
+                                                        </template>
+                                                        <template v-else>
+                                                            <span class="px-2.5 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold rounded flex items-center gap-1">
+                                                                <span>✓</span> Central Assistance Fully Released
+                                                            </span>
+                                                        </template>
                                                     </template>
+
+                                                    <!-- MoJS Ministry & Brahmaputra Board Status Information -->
                                                     <template v-else>
-                                                        <Link
-                                                            :href="route('fund-release.create', { scheme_id: scheme.id })"
-                                                            class="px-3 py-1.5 bg-[#0F4C9F] hover:bg-[#0c3c7d] text-white text-xs font-bold rounded shadow-xs transition flex items-center gap-1"
-                                                        >
-                                                            <span>⚡</span> Initiate Fund Claim (Instalment #{{ scheme.next_suggested_instalment || 1 }})
-                                                        </Link>
+                                                        <template v-if="scheme.has_active_claim && scheme.active_claim">
+                                                            <Link
+                                                                :href="route('fund-release.show', scheme.active_claim.id)"
+                                                                class="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 text-xs font-bold rounded shadow-2xs transition flex items-center gap-1.5"
+                                                                :title="'Click to view dossier and take action on Claim #' + scheme.active_claim.id"
+                                                            >
+                                                                <span>⏳</span> Claim #{{ scheme.active_claim.id }} (Instalment #{{ scheme.active_claim.instalment_number }}) Under Review: {{ (scheme.active_claim.status || '').replace(/_/g, ' ') }} &rarr;
+                                                            </Link>
+                                                        </template>
+                                                        <template v-else-if="scheme.next_suggested_instalment > 1 && (scheme.balance_central_share_cr > 0 || !scheme.balance_central_share_cr)">
+                                                            <span
+                                                                class="px-3 py-1.5 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold rounded flex items-center gap-1.5"
+                                                                title="Settlement completed. State official is unlocked to submit the next instalment claim."
+                                                            >
+                                                                <span>✓</span> Instalment #{{ scheme.next_suggested_instalment - 1 }} Settled &bull; State Can Submit Instalment #{{ scheme.next_suggested_instalment }}
+                                                            </span>
+                                                        </template>
+                                                        <template v-else-if="scheme.balance_central_share_cr <= 0 && scheme.released_central_share_cr > 0">
+                                                            <span class="px-2.5 py-1.5 bg-slate-100 border border-slate-300 text-slate-700 text-xs font-bold rounded flex items-center gap-1">
+                                                                <span>✓</span> Central Share Fully Disbursed
+                                                            </span>
+                                                        </template>
+                                                        <template v-else>
+                                                            <span class="px-2.5 py-1 bg-slate-50 border border-slate-200 text-slate-600 text-xs font-medium rounded flex items-center gap-1">
+                                                                <span>ℹ️</span> Awaiting State Claim Submission (Instalment #1)
+                                                            </span>
+                                                        </template>
                                                     </template>
                                                 </div>
                                             </div>
@@ -1163,7 +1209,12 @@ const submitManualScheme = () => {
                         </div>
                         <div>
                             <label class="block font-bold text-slate-700 mb-1">State / UT <span class="text-rose-500">*</span></label>
+                            <div v-if="user?.role === 'state_official'" class="w-full rounded-lg text-xs font-bold bg-slate-100 border border-slate-300 px-3 py-2 text-slate-800 flex items-center justify-between">
+                                <span>{{ user?.state || 'Assam' }}</span>
+                                <span class="text-[10px] text-blue-700 uppercase tracking-wider font-semibold">Locked</span>
+                            </div>
                             <select
+                                v-else
                                 v-model="manualForm.state"
                                 @change="fetchNextCode"
                                 :class="manualForm.errors.state ? 'border-rose-400' : 'border-slate-300'"

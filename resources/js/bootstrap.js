@@ -20,4 +20,32 @@ if (typeof document !== 'undefined') {
         }
         return config;
     });
+
+    // Response interceptor to automatically recover from 419 (CSRF token mismatch)
+    window.axios.interceptors.response.use(
+        (response) => response,
+        async (error) => {
+            const originalRequest = error.config;
+            if (error.response && error.response.status === 419 && originalRequest && !originalRequest._retry) {
+                originalRequest._retry = true;
+                try {
+                    const res = await window.axios.get('/csrf-token');
+                    const freshToken = res.data?.csrf_token;
+                    if (freshToken) {
+                        const meta = document.querySelector('meta[name="csrf-token"]');
+                        if (meta) meta.content = freshToken;
+                        window.axios.defaults.headers.common['X-CSRF-TOKEN'] = freshToken;
+                        originalRequest.headers['X-CSRF-TOKEN'] = freshToken;
+                        if (originalRequest.data instanceof FormData && originalRequest.data.has('_token')) {
+                            originalRequest.data.set('_token', freshToken);
+                        }
+                        return window.axios(originalRequest);
+                    }
+                } catch (refreshErr) {
+                    console.error('Failed to refresh CSRF token automatically:', refreshErr);
+                }
+            }
+            return Promise.reject(error);
+        }
+    );
 }

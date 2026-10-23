@@ -39,12 +39,6 @@ const needsCorrectionCount = computed(() =>
     props.reports.filter(r => r.status === 'NEEDS_CORRECTION').length
 );
 
-const avgPhysicalProgress = computed(() => {
-    if (!props.reports.length) return 0;
-    const sum = props.reports.reduce((acc, r) => acc + (parseFloat(r.physical_progress_pct) || 0), 0);
-    return Math.round(sum / props.reports.length);
-});
-
 // ─── Filtering ───
 const filteredReports = computed(() => {
     const q = search.value.trim().toLowerCase();
@@ -162,75 +156,6 @@ const getStatusBadge = (status) => {
         </template>
 
         <div class="py-6 px-4 sm:px-6 lg:px-8 space-y-5 max-w-screen-2xl mx-auto">
-
-            <!-- ─── STAT STRIP ─── -->
-            <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-4 sm:p-5 flex flex-wrap items-center justify-between gap-4">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="text-2xl font-extrabold text-gray-900 leading-none">{{ totalCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Total Reports</div>
-                    </div>
-                </div>
-
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="text-2xl font-extrabold text-emerald-600 leading-none">{{ approvedCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Verified & Approved</div>
-                    </div>
-                </div>
-
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="text-2xl font-extrabold text-blue-600 leading-none">{{ underReviewCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Under Review</div>
-                    </div>
-                </div>
-
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div class="text-2xl font-extrabold text-amber-600 leading-none">{{ needsCorrectionCount }}</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Action Required</div>
-                    </div>
-                </div>
-
-                <div class="w-px h-10 bg-gray-200 hidden sm:block"></div>
-
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-bold">
-                        %
-                    </div>
-                    <div>
-                        <div class="text-2xl font-extrabold text-teal-700 leading-none">{{ avgPhysicalProgress }}%</div>
-                        <div class="text-xs text-gray-500 font-medium mt-1">Avg. Physical Progress</div>
-                    </div>
-                </div>
-            </div>
 
             <!-- ─── NOTICE STRIP ─── -->
             <div class="bg-emerald-50/70 border border-emerald-100 rounded-2xl p-4 flex items-center gap-3">

@@ -75,6 +75,24 @@ class Scheme extends Model
     }
 
     /**
+     * Role-aware scope: State users only see their own state's schemes,
+     * while Brahmaputra Board, MoJS, and Super Admin can see all states.
+     */
+    public function scopeForUser($query, ?User $user = null)
+    {
+        $user = $user ?? auth()->user();
+        if (!$user) {
+            return $query;
+        }
+
+        if ($user->isState() && !empty($user->state)) {
+            return $query->where('state', $user->state);
+        }
+
+        return $query;
+    }
+
+    /**
      * Computed central share amount.
      */
     public function getCentralShareAmountAttribute(): float

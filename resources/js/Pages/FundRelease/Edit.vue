@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import WizardStepIndicator from '@/Components/WizardStepIndicator.vue';
@@ -18,6 +18,7 @@ const props = defineProps({
     userRole: String,
 });
 
+const page = usePage();
 const currentStep = ref(1);
 const steps = ['Scheme Details', 'Financial Request', 'Progress Metrics', 'Supporting Docs'];
 const isSubmitting = ref(false);
@@ -240,9 +241,19 @@ const saveStep = async (isFinalSubmit = false) => {
         }
     }
 
+    const pageToken = page.props.csrf_token;
+    const metaToken = typeof document !== 'undefined' ? document.querySelector('meta[name="csrf-token"]')?.content : null;
+    const effectiveToken = pageToken || metaToken;
+    if (effectiveToken) {
+        formData.append('_token', effectiveToken);
+    }
+
     try {
         await axios.post(route('fund-release.update', props.paymentRequest.id), formData, {
-            headers: { 'Content-Type': 'multipart/form-data' }
+            headers: {
+                'Content-Type': 'multipart/form-data',
+                ...(effectiveToken ? { 'X-CSRF-TOKEN': effectiveToken } : {})
+            }
         });
         
         if (isFinalSubmit) {
@@ -251,7 +262,18 @@ const saveStep = async (isFinalSubmit = false) => {
             currentStep.value++;
         }
     } catch (error) {
-        errorMsg.value = error.response?.data?.message || 'An error occurred while saving.';
+        if (error.response?.status === 419) {
+            try {
+                const res = await axios.get('/csrf-token');
+                if (res.data?.csrf_token && typeof document !== 'undefined') {
+                    const meta = document.querySelector('meta[name="csrf-token"]');
+                    if (meta) meta.content = res.data.csrf_token;
+                }
+            } catch {}
+            errorMsg.value = 'Security session refreshed. Please click Proceed to next step again.';
+        } else {
+            errorMsg.value = error.response?.data?.message || 'An error occurred while saving.';
+        }
     } finally {
         isSubmitting.value = false;
     }

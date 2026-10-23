@@ -66,4 +66,73 @@ class SchemeCatalogueReleaseTest extends TestCase
                 ->where('stats.total_curtailed', '0.04')
         );
     }
+
+    public function test_state_official_sees_only_own_state_while_bb_and_mojs_see_all_states()
+    {
+        $assamUser = User::factory()->create([
+            'role'        => 'state_official',
+            'state'       => 'Assam',
+            'is_approved' => true,
+        ]);
+
+        $bbUser = User::factory()->create([
+            'role'        => 'board_official',
+            'state'       => null,
+            'is_approved' => true,
+        ]);
+
+        $mojsUser = User::factory()->create([
+            'role'        => 'mojs_official',
+            'state'       => null,
+            'is_approved' => true,
+        ]);
+
+        Scheme::create([
+            'scheme_code'          => 'AS-01',
+            'scheme_name'          => 'Assam Embankment Project',
+            'state'                => 'Assam',
+            'sanctioned_amount_cr' => 10.0,
+            'is_active'            => true,
+        ]);
+
+        Scheme::create([
+            'scheme_code'          => 'SK-01',
+            'scheme_name'          => 'Sikkim River Training Project',
+            'state'                => 'Sikkim',
+            'sanctioned_amount_cr' => 20.0,
+            'is_active'            => true,
+        ]);
+
+        // 1. Assam State Official should only see AS-01
+        $assamResponse = $this->actingAs($assamUser)->get(route('schemes.index'));
+        $assamResponse->assertStatus(200);
+        $assamResponse->assertInertia(fn ($page) =>
+            $page->component('Schemes/Index')
+                ->has('schemes', 1)
+                ->where('schemes.0.scheme_code', 'AS-01')
+                ->where('stats.total', 1)
+                ->where('stats.total_sanctioned', '10.00')
+        );
+
+        // 2. Brahmaputra Board official should see all schemes (both Assam and Sikkim)
+        $bbResponse = $this->actingAs($bbUser)->get(route('schemes.index'));
+        $bbResponse->assertStatus(200);
+        $bbResponse->assertInertia(fn ($page) =>
+            $page->component('Schemes/Index')
+                ->has('schemes', 2)
+                ->where('stats.total', 2)
+                ->where('stats.total_sanctioned', '30.00')
+        );
+
+        // 3. Ministry of Jal Shakti official should see all schemes
+        $mojsResponse = $this->actingAs($mojsUser)->get(route('schemes.index'));
+        $mojsResponse->assertStatus(200);
+        $mojsResponse->assertInertia(fn ($page) =>
+            $page->component('Schemes/Index')
+                ->has('schemes', 2)
+                ->where('stats.total', 2)
+                ->where('stats.total_sanctioned', '30.00')
+        );
+    }
 }
+
