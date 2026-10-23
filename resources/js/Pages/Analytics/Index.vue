@@ -253,7 +253,15 @@ const filteredTickets = computed(() => {
     let list = tracker.tickets;
 
     if (ticketPendingFilter.value !== 'ALL') {
-        list = list.filter(t => t.pending_with_party === ticketPendingFilter.value);
+        if (ticketPendingFilter.value === 'ALL_PENDING') {
+            list = list.filter(t => t.is_pending);
+        } else if (ticketPendingFilter.value === 'ALL_COMPLETED') {
+            list = list.filter(t => t.is_completed);
+        } else if (ticketPendingFilter.value === 'OVERDUE') {
+            list = list.filter(t => t.is_overdue);
+        } else {
+            list = list.filter(t => t.pending_with_party === ticketPendingFilter.value);
+        }
     }
 
     const q = ticketSearchQuery.value.trim().toLowerCase();
@@ -916,137 +924,187 @@ const donutSegments = computed(() => {
                         </div>
                     </div>
 
-                    <!-- 6-Metric Executive KPI Strip -->
+                    <!-- 6-Metric Executive Pendency & Completion KPI Strip -->
                     <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                         
-                        <!-- KPI 1: Total Tickets -->
+                        <!-- KPI 1: Total Claims -->
                         <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-1">
-                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Total Tickets Raised</span>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 block">Total Claims Raised</span>
                             <div class="text-2xl font-black text-slate-900 leading-tight">
                                 {{ analytics.ticket_tracker?.total_count || 0 }}
                             </div>
-                            <span class="text-[10px] font-bold text-slate-500">Statutory Claims</span>
+                            <span class="text-[10px] font-bold text-slate-500">₹{{ Number(analytics.ticket_tracker?.total_claimed_cr || 0).toFixed(2) }} Cr Total</span>
                         </div>
 
-                        <!-- KPI 2: Pending with BB -->
-                        <div class="bg-purple-50/70 p-3.5 rounded-xl border border-purple-200 space-y-1">
-                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 block">Pending With BB</span>
-                            <div class="text-2xl font-black text-purple-950 leading-tight">
-                                {{ analytics.ticket_tracker?.pending_bb_count || 0 }}
-                            </div>
-                            <span class="text-[10px] font-bold text-purple-600">Review &amp; Inspection</span>
-                        </div>
-
-                        <!-- KPI 3: Pending with MoJS -->
-                        <div class="bg-blue-50/70 p-3.5 rounded-xl border border-blue-200 space-y-1">
-                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700 block">Pending With MoJS</span>
-                            <div class="text-2xl font-black text-blue-950 leading-tight">
-                                {{ analytics.ticket_tracker?.pending_mojs_count || 0 }}
-                            </div>
-                            <span class="text-[10px] font-bold text-blue-600">Sanction Approval</span>
-                        </div>
-
-                        <!-- KPI 4: Pending with State -->
-                        <div class="bg-amber-50/70 p-3.5 rounded-xl border border-amber-200 space-y-1">
-                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-800 block">Pending With State</span>
+                        <!-- KPI 2: Active Pending Claims -->
+                        <div class="bg-amber-50/80 p-3.5 rounded-xl border border-amber-200 space-y-1 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 right-0 h-1 bg-amber-500"></div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-900 block flex items-center gap-1">
+                                <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                                ⏳ Active Pending
+                            </span>
                             <div class="text-2xl font-black text-amber-950 leading-tight">
-                                {{ analytics.ticket_tracker?.pending_state_count || 0 }}
+                                {{ analytics.ticket_tracker?.pending_count || 0 }}
                             </div>
-                            <span class="text-[10px] font-bold text-amber-700">Drafts / Clarifications</span>
+                            <span class="text-[10px] font-bold text-amber-800">₹{{ Number(analytics.ticket_tracker?.pending_claims_cr || 0).toFixed(2) }} Cr In Pipeline</span>
                         </div>
 
-                        <!-- KPI 5: Pending Pipeline Amount -->
-                        <div class="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 space-y-1">
-                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700 block">Pipeline Amount</span>
-                            <div class="text-2xl font-black text-indigo-950 leading-tight">
-                                ₹{{ Number(analytics.ticket_tracker?.pending_claims_cr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) }}
-                                <span class="text-xs font-bold text-indigo-600">Cr</span>
-                            </div>
-                            <span class="text-[10px] font-bold text-indigo-600">Under Review</span>
-                        </div>
-
-                        <!-- KPI 6: Settled & Disbursed -->
-                        <div class="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200 space-y-1">
-                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-800 block">Settled &amp; Disbursed</span>
+                        <!-- KPI 3: Completed & Settled -->
+                        <div class="bg-emerald-50/80 p-3.5 rounded-xl border border-emerald-200 space-y-1 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 right-0 h-1 bg-emerald-600"></div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-900 block">✅ Completed &amp; Settled</span>
                             <div class="text-2xl font-black text-emerald-950 leading-tight">
-                                ₹{{ Number(analytics.ticket_tracker?.settled_cr || 0).toLocaleString('en-IN', { minimumFractionDigits: 2 }) }}
-                                <span class="text-xs font-bold text-emerald-700">Cr</span>
+                                {{ analytics.ticket_tracker?.settled_count || 0 }}
                             </div>
-                            <span class="text-[10px] font-bold text-emerald-700">{{ analytics.ticket_tracker?.settled_count || 0 }} Claims Completed</span>
+                            <span class="text-[10px] font-bold text-emerald-800">₹{{ Number(analytics.ticket_tracker?.settled_cr || 0).toFixed(2) }} Cr Disbursed</span>
+                        </div>
+
+                        <!-- KPI 4: Clearance Rate -->
+                        <div class="bg-blue-50/80 p-3.5 rounded-xl border border-blue-200 space-y-1 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 right-0 h-1 bg-[#0F4C9F]"></div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-900 block">⚡ Clearance Ratio</span>
+                            <div class="text-2xl font-black text-blue-950 leading-tight">
+                                {{ analytics.ticket_tracker?.clearance_rate_pct || 0 }}%
+                            </div>
+                            <span class="text-[10px] font-bold text-blue-700">Resolution Rate</span>
+                        </div>
+
+                        <!-- KPI 5: Average Pendency Days -->
+                        <div class="bg-purple-50/80 p-3.5 rounded-xl border border-purple-200 space-y-1 relative overflow-hidden">
+                            <div class="absolute top-0 left-0 right-0 h-1 bg-purple-600"></div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider text-purple-900 block">⏱️ Avg. In-Flight Age</span>
+                            <div class="text-2xl font-black text-purple-950 leading-tight">
+                                {{ analytics.ticket_tracker?.avg_pendency_days || 0 }} <span class="text-sm font-bold text-purple-700">Days</span>
+                            </div>
+                            <span class="text-[10px] font-bold text-purple-700">Active Workflow Turnaround</span>
+                        </div>
+
+                        <!-- KPI 6: SLA Overdue Claims -->
+                        <div class="p-3.5 rounded-xl border space-y-1 relative overflow-hidden"
+                            :class="(analytics.ticket_tracker?.overdue_count || 0) > 0 ? 'bg-rose-50 border-rose-300' : 'bg-slate-50 border-slate-200'"
+                        >
+                            <div class="absolute top-0 left-0 right-0 h-1" :class="(analytics.ticket_tracker?.overdue_count || 0) > 0 ? 'bg-rose-600' : 'bg-slate-300'"></div>
+                            <span class="text-[10px] font-extrabold uppercase tracking-wider block" :class="(analytics.ticket_tracker?.overdue_count || 0) > 0 ? 'text-rose-900' : 'text-slate-500'">
+                                🚨 SLA Overdue (>30d)
+                            </span>
+                            <div class="text-2xl font-black leading-tight" :class="(analytics.ticket_tracker?.overdue_count || 0) > 0 ? 'text-rose-950' : 'text-slate-900'">
+                                {{ analytics.ticket_tracker?.overdue_count || 0 }}
+                            </div>
+                            <span class="text-[10px] font-bold" :class="(analytics.ticket_tracker?.overdue_count || 0) > 0 ? 'text-rose-700 font-black' : 'text-slate-500'">
+                                {{ (analytics.ticket_tracker?.overdue_count || 0) > 0 ? 'Critical Attention Required' : 'Zero SLA Breaches' }}
+                            </span>
                         </div>
 
                     </div>
 
                     <!-- Filter Bar & Search -->
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 bg-slate-50/80 rounded-xl border border-slate-200">
+                    <div class="space-y-2.5 p-3.5 bg-slate-50/90 rounded-xl border border-slate-200">
                         
-                        <!-- Filter Pills -->
-                        <div class="flex flex-wrap items-center gap-1.5 text-xs font-bold">
-                            <button
-                                type="button"
-                                @click="ticketPendingFilter = 'ALL'; ticketCurrentPage = 1;"
-                                :class="ticketPendingFilter === 'ALL' ? 'bg-[#0F4C9F] text-white shadow-2xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'"
-                                class="px-3 py-1.5 rounded-lg transition cursor-pointer"
-                            >
-                                All ({{ analytics.ticket_tracker?.total_count || 0 }})
-                            </button>
+                        <!-- Primary Master Filter: Pendency vs Completion -->
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
+                            <div class="flex flex-wrap items-center gap-1.5 text-xs font-black">
+                                <span class="text-[11px] font-bold text-slate-500 uppercase mr-1">Focus Mode:</span>
+                                
+                                <button
+                                    type="button"
+                                    @click="ticketPendingFilter = 'ALL'; ticketCurrentPage = 1;"
+                                    :class="ticketPendingFilter === 'ALL' ? 'bg-[#0F4C9F] text-white shadow-xs' : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'"
+                                    class="px-3 py-1.5 rounded-lg transition cursor-pointer"
+                                >
+                                    All Claims ({{ analytics.ticket_tracker?.total_count || 0 }})
+                                </button>
+                                
+                                <button
+                                    type="button"
+                                    @click="ticketPendingFilter = 'ALL_PENDING'; ticketCurrentPage = 1;"
+                                    :class="ticketPendingFilter === 'ALL_PENDING' ? 'bg-amber-600 text-white shadow-xs' : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-300'"
+                                    class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <span>⏳ All Active Pending</span>
+                                    <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'ALL_PENDING' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-800'">
+                                        {{ analytics.ticket_tracker?.pending_count || 0 }}
+                                    </span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    @click="ticketPendingFilter = 'ALL_COMPLETED'; ticketCurrentPage = 1;"
+                                    :class="ticketPendingFilter === 'ALL_COMPLETED' ? 'bg-emerald-700 text-white shadow-xs' : 'bg-white text-emerald-900 hover:bg-emerald-50 border border-emerald-300'"
+                                    class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <span>✅ All Completed / Settled</span>
+                                    <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'ALL_COMPLETED' ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-100 text-emerald-800'">
+                                        {{ analytics.ticket_tracker?.settled_count || 0 }}
+                                    </span>
+                                </button>
+
+                                <button
+                                    v-if="(analytics.ticket_tracker?.overdue_count || 0) > 0"
+                                    type="button"
+                                    @click="ticketPendingFilter = 'OVERDUE'; ticketCurrentPage = 1;"
+                                    :class="ticketPendingFilter === 'OVERDUE' ? 'bg-rose-700 text-white shadow-xs' : 'bg-white text-rose-900 hover:bg-rose-50 border border-rose-300'"
+                                    class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                >
+                                    <span>🚨 Overdue (>30d)</span>
+                                    <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'OVERDUE' ? 'bg-rose-900 text-rose-100' : 'bg-rose-100 text-rose-800'">
+                                        {{ analytics.ticket_tracker?.overdue_count || 0 }}
+                                    </span>
+                                </button>
+                            </div>
+
+                            <!-- Live Search -->
+                            <div class="relative w-full sm:w-64">
+                                <input
+                                    v-model="ticketSearchQuery"
+                                    type="text"
+                                    placeholder="Search project, ticket #, scheme..."
+                                    class="w-full text-xs rounded-lg border-slate-300 pl-8 pr-3 py-1.5 focus:border-[#0F4C9F] focus:ring-[#0F4C9F]"
+                                />
+                                <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                                </svg>
+                            </div>
+                        </div>
+
+                        <!-- Secondary Authority Sub-Filters -->
+                        <div class="flex flex-wrap items-center gap-1.5 text-[11px] font-bold">
+                            <span class="text-slate-500 uppercase mr-1">Authority Filter:</span>
+                            
                             <button
                                 type="button"
                                 @click="ticketPendingFilter = 'BB'; ticketCurrentPage = 1;"
                                 :class="ticketPendingFilter === 'BB' ? 'bg-purple-700 text-white shadow-2xs' : 'bg-white text-purple-900 hover:bg-purple-50 border border-purple-200'"
-                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                class="px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1"
                             >
-                                <span>🏢 Pending BB</span>
+                                <span>🏢 Pending Brahmaputra Board</span>
                                 <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'BB' ? 'bg-purple-900 text-purple-100' : 'bg-purple-100 text-purple-800'">
                                     {{ analytics.ticket_tracker?.pending_bb_count || 0 }}
                                 </span>
                             </button>
+                            
                             <button
                                 type="button"
                                 @click="ticketPendingFilter = 'MOJS'; ticketCurrentPage = 1;"
                                 :class="ticketPendingFilter === 'MOJS' ? 'bg-blue-700 text-white shadow-2xs' : 'bg-white text-blue-900 hover:bg-blue-50 border border-blue-200'"
-                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                class="px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1"
                             >
                                 <span>🏛️ Pending MoJS</span>
                                 <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'MOJS' ? 'bg-blue-900 text-blue-100' : 'bg-blue-100 text-blue-800'">
                                     {{ analytics.ticket_tracker?.pending_mojs_count || 0 }}
                                 </span>
                             </button>
+                            
                             <button
                                 type="button"
                                 @click="ticketPendingFilter = 'STATE'; ticketCurrentPage = 1;"
                                 :class="ticketPendingFilter === 'STATE' ? 'bg-amber-600 text-white shadow-2xs' : 'bg-white text-amber-900 hover:bg-amber-50 border border-amber-200'"
-                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
+                                class="px-2.5 py-1 rounded-md transition cursor-pointer flex items-center gap-1"
                             >
-                                <span>📍 Pending State</span>
+                                <span>📍 Pending State WRD</span>
                                 <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'STATE' ? 'bg-amber-800 text-amber-100' : 'bg-amber-100 text-amber-800'">
                                     {{ analytics.ticket_tracker?.pending_state_count || 0 }}
                                 </span>
                             </button>
-                            <button
-                                type="button"
-                                @click="ticketPendingFilter = 'SETTLED'; ticketCurrentPage = 1;"
-                                :class="ticketPendingFilter === 'SETTLED' ? 'bg-emerald-700 text-white shadow-2xs' : 'bg-white text-emerald-900 hover:bg-emerald-50 border border-emerald-200'"
-                                class="px-3 py-1.5 rounded-lg transition cursor-pointer flex items-center gap-1.5"
-                            >
-                                <span>✅ Settled</span>
-                                <span class="px-1.5 py-0.2 rounded-full text-[10px]" :class="ticketPendingFilter === 'SETTLED' ? 'bg-emerald-900 text-emerald-100' : 'bg-emerald-100 text-emerald-800'">
-                                    {{ analytics.ticket_tracker?.settled_count || 0 }}
-                                </span>
-                            </button>
-                        </div>
-
-                        <!-- Search Input -->
-                        <div class="relative w-full sm:w-72">
-                            <input
-                                v-model="ticketSearchQuery"
-                                type="text"
-                                placeholder="Search project, ticket, scheme code..."
-                                class="w-full text-xs rounded-lg border-slate-300 pl-8 pr-3 py-1.5 focus:border-[#0F4C9F] focus:ring-[#0F4C9F]"
-                            />
-                            <svg class="w-4 h-4 text-slate-400 absolute left-2.5 top-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                            </svg>
                         </div>
 
                     </div>
@@ -1054,16 +1112,16 @@ const donutSegments = computed(() => {
                     <!-- Data Table -->
                     <div class="overflow-x-auto rounded-xl border border-slate-200 shadow-2xs bg-white">
                         <table class="w-full text-xs text-left">
-                            <thead class="bg-slate-100/80 text-slate-700 uppercase font-black text-[10px] tracking-wider border-b border-slate-200">
+                            <thead class="bg-slate-100/90 text-slate-700 uppercase font-black text-[10px] tracking-wider border-b border-slate-200">
                                 <tr>
                                     <th class="py-3 px-3.5">Ticket ID</th>
+                                    <th class="py-3 px-3.5 text-center">Pendency / Completion</th>
                                     <th class="py-3 px-3">State &amp; District</th>
-                                    <th class="py-3 px-4">Which Project (Scheme)</th>
+                                    <th class="py-3 px-4">Which Project &amp; Ground Progress</th>
                                     <th class="py-3 px-3">Which Fund</th>
                                     <th class="py-3 px-3 text-right">What Amount</th>
-                                    <th class="py-3 px-3 text-center">Ticket Status</th>
-                                    <th class="py-3 px-3.5 text-center">Pending With Whom</th>
-                                    <th class="py-3 px-3 text-center">Date &amp; Ageing</th>
+                                    <th class="py-3 px-3.5 text-center">Pending Authority</th>
+                                    <th class="py-3 px-3 text-center">Date Raised</th>
                                     <th class="py-3 px-3 text-center">Action</th>
                                 </tr>
                             </thead>
@@ -1083,21 +1141,69 @@ const donutSegments = computed(() => {
                                         </span>
                                     </td>
 
+                                    <!-- Focus: Pendency / Completion Badge Column -->
+                                    <td class="py-3.5 px-3.5 text-center whitespace-nowrap">
+                                        <!-- If Completed -->
+                                        <div v-if="t.is_completed">
+                                            <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-2xs">
+                                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                                                <span>✅ COMPLETED</span>
+                                            </span>
+                                            <div class="text-[10px] text-emerald-700 font-bold mt-1 font-mono">
+                                                {{ t.pendency }}
+                                            </div>
+                                        </div>
+
+                                        <!-- If Active Pending -->
+                                        <div v-else-if="t.is_pending">
+                                            <span
+                                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black border shadow-2xs"
+                                                :class="t.is_overdue ? 'bg-rose-100 text-rose-900 border-rose-300 animate-pulse' : (t.days_count > 14 ? 'bg-amber-100 text-amber-900 border-amber-300' : 'bg-blue-100 text-blue-900 border-blue-300')"
+                                            >
+                                                <span class="w-1.5 h-1.5 rounded-full" :class="t.is_overdue ? 'bg-rose-600' : (t.days_count > 14 ? 'bg-amber-600' : 'bg-blue-600')"></span>
+                                                <span>⏳ PENDING</span>
+                                            </span>
+                                            <div class="text-[10px] font-extrabold mt-1 font-mono"
+                                                :class="t.is_overdue ? 'text-rose-700' : (t.days_count > 14 ? 'text-amber-800' : 'text-blue-800')"
+                                            >
+                                                {{ t.days_count }} days in review
+                                            </div>
+                                            <div v-if="t.is_overdue" class="text-[9px] font-black uppercase tracking-wider text-rose-700">
+                                                🚨 SLA Breach
+                                            </div>
+                                        </div>
+
+                                        <!-- If Rejected / Other -->
+                                        <div v-else>
+                                            <span class="inline-block px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-100 text-slate-700 border border-slate-300">
+                                                {{ t.status_label }}
+                                            </span>
+                                        </div>
+                                    </td>
+
                                     <!-- State & District -->
                                     <td class="py-3.5 px-3 whitespace-nowrap">
                                         <div class="font-bold text-slate-900">{{ t.state }}</div>
                                         <div class="text-[10px] text-slate-500 font-semibold">{{ t.district }}</div>
                                     </td>
 
-                                    <!-- Which Project -->
+                                    <!-- Which Project & Ground Physical Progress -->
                                     <td class="py-3.5 px-4 max-w-xs">
                                         <div class="font-bold text-slate-900 leading-snug line-clamp-2" :title="t.project_name">
                                             {{ t.project_name }}
                                         </div>
-                                        <div class="mt-1 flex items-center gap-1.5">
+                                        <div class="mt-1 flex flex-wrap items-center gap-2">
                                             <span class="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-50 text-[#0F4C9F] border border-blue-200">
                                                 {{ t.scheme_code }}
                                             </span>
+                                            <!-- Ground Physical Completion % -->
+                                            <div class="flex items-center gap-1.5">
+                                                <span class="text-[10px] font-extrabold text-slate-600">Physical:</span>
+                                                <span class="text-[10px] font-black text-[#0F4C9F]">{{ t.physical_progress_pct }}%</span>
+                                                <div class="w-12 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                                    <div class="bg-[#0F4C9F] h-full rounded-full" :style="{ width: `${Math.min(100, t.physical_progress_pct)}%` }"></div>
+                                                </div>
+                                            </div>
                                         </div>
                                     </td>
 
@@ -1122,17 +1228,7 @@ const donutSegments = computed(() => {
                                         </div>
                                     </td>
 
-                                    <!-- Status -->
-                                    <td class="py-3.5 px-3 text-center whitespace-nowrap">
-                                        <span
-                                            class="inline-block px-2.5 py-1 rounded-full text-[10px] font-black border"
-                                            :class="statusBadgeClass(t.status, 0)"
-                                        >
-                                            {{ t.status_label }}
-                                        </span>
-                                    </td>
-
-                                    <!-- Pending With Whom -->
+                                    <!-- Pending Authority -->
                                     <td class="py-3.5 px-3.5 text-center whitespace-nowrap">
                                         <span
                                             class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-black border shadow-2xs"
@@ -1141,16 +1237,15 @@ const donutSegments = computed(() => {
                                             <span class="w-1.5 h-1.5 rounded-full" :class="pendingPartyBadge(t.pending_with_party).dot"></span>
                                             <span>{{ pendingPartyBadge(t.pending_with_party).icon }} {{ t.pending_with }}</span>
                                         </span>
+                                        <div class="text-[10px] text-slate-500 mt-1 font-semibold truncate max-w-[160px]" :title="t.status_label">
+                                            Stage: {{ t.status_label }}
+                                        </div>
                                     </td>
 
-                                    <!-- Date & Ageing -->
+                                    <!-- Date Raised -->
                                     <td class="py-3.5 px-3 text-center whitespace-nowrap">
                                         <div class="text-[11px] font-mono font-bold text-slate-700">{{ t.date_raised }}</div>
-                                        <div class="text-[10px] font-bold mt-0.5"
-                                            :class="t.days_count > 30 ? 'text-rose-700 font-black' : (t.days_count > 14 ? 'text-amber-700' : 'text-emerald-700')"
-                                        >
-                                            {{ t.pendency }}
-                                        </div>
+                                        <div class="text-[10px] text-slate-400 font-medium">Requisition Date</div>
                                     </td>
 
                                     <!-- Action -->

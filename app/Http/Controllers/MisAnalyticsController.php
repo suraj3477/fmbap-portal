@@ -592,11 +592,17 @@ class MisAnalyticsController extends Controller
                 'approved_amount_cr'       => $approvedCr,
                 'status'                   => $t->status,
                 'status_label'             => $statusLabel,
+                'is_completed'             => $t->status === PaymentRequest::STATUS_APPROVED,
+                'is_pending'               => $t->status !== PaymentRequest::STATUS_APPROVED && $t->status !== PaymentRequest::STATUS_REJECTED,
+                'resolution_stage'         => $t->status === PaymentRequest::STATUS_APPROVED ? 'COMPLETED' : ($t->status === PaymentRequest::STATUS_REJECTED ? 'REJECTED' : 'PENDING'),
+                'physical_progress_pct'    => (float)($t->physical_progress_pct ?: ($scheme?->physical_progress_pct ?: 0)),
+                'financial_progress_pct'   => (float)($t->financial_progress_pct ?: 0),
                 'pending_with'             => $pendingWith,
                 'pending_with_party'       => $pendingWithParty,
                 'date_raised'              => $raisedStr,
                 'pendency'                 => $pendency,
                 'days_count'               => $daysCount,
+                'is_overdue'               => ($t->status !== PaymentRequest::STATUS_APPROVED && $t->status !== PaymentRequest::STATUS_REJECTED) && $daysCount > 30,
                 'sanction_order_no'        => $t->sanction_order_no ?: '—',
                 'remarks'                  => $t->bb_remarks ?: ($t->mojs_remarks ?: ($t->state_remarks ?: '—')),
             ];
@@ -606,18 +612,30 @@ class MisAnalyticsController extends Controller
         $pendingMojsCount  = $rawTickets->filter(fn($t) => $t->status === PaymentRequest::STATUS_FORWARDED_TO_MOJS)->count();
         $pendingStateCount = $rawTickets->filter(fn($t) => in_array($t->status, [PaymentRequest::STATUS_DRAFT, PaymentRequest::STATUS_NEEDS_CORRECTION]))->count();
         $settledCount      = $rawTickets->filter(fn($t) => $t->status === PaymentRequest::STATUS_APPROVED)->count();
+        $totalPendingCount = $rawTickets->filter(fn($t) => $t->status !== PaymentRequest::STATUS_APPROVED && $t->status !== PaymentRequest::STATUS_REJECTED)->count();
+        $overdueCount      = $ticketsList->filter(fn($t) => $t['is_overdue'])->count();
 
         $totalClaimedCr = (float) $rawTickets->sum(fn($t) => (float)($t->requested_amount_cr ?? 0));
         $pendingClaimsCr = (float) $rawTickets->filter(fn($t) => $t->status !== PaymentRequest::STATUS_APPROVED && $t->status !== PaymentRequest::STATUS_REJECTED)->sum(fn($t) => (float)($t->requested_amount_cr ?? 0));
         $settledCr = (float) $rawTickets->filter(fn($t) => $t->status === PaymentRequest::STATUS_APPROVED)->sum(fn($t) => (float)($t->approved_amount_cr ?: $t->requested_amount_cr));
 
+        $totalCount = $rawTickets->count();
+        $clearanceRate = $totalCount > 0 ? round(($settledCount / $totalCount) * 100, 1) : 100;
+
+        $pendingTicketsList = $ticketsList->filter(fn($t) => $t['is_pending']);
+        $avgPendencyDays = $pendingTicketsList->count() > 0 ? round($pendingTicketsList->avg('days_count'), 1) : 0;
+
         $ticketTracker = [
             'tickets'                 => $ticketsList,
-            'total_count'             => $rawTickets->count(),
+            'total_count'             => $totalCount,
+            'pending_count'           => $totalPendingCount,
+            'settled_count'           => $settledCount,
+            'clearance_rate_pct'      => $clearanceRate,
+            'overdue_count'           => $overdueCount,
+            'avg_pendency_days'       => $avgPendencyDays,
             'pending_bb_count'        => $pendingBbCount,
             'pending_mojs_count'      => $pendingMojsCount,
             'pending_state_count'     => $pendingStateCount,
-            'settled_count'           => $settledCount,
             'total_claimed_cr'        => round($totalClaimedCr, 2),
             'pending_claims_cr'       => round($pendingClaimsCr, 2),
             'settled_cr'              => round($settledCr, 2),

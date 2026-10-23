@@ -45,9 +45,11 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
         return [
             'Sl No.',
             'Ticket / Claim ID',
+            'Resolution Stage',
             'State',
             'Project / Scheme Name',
             'Scheme Code',
+            'Ground Physical Completion (%)',
             'Fund Component / Category',
             'Instalment',
             'Claimed Amount (₹ Cr)',
@@ -56,7 +58,7 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
             'Ticket Status',
             'Pending With Whom',
             'Date Raised',
-            'Pendency Duration',
+            'Pendency Duration / Turnaround',
             'Sanction Order No.',
             'Latest Official Remarks / Notes',
         ];
@@ -113,6 +115,9 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
         $claimedCr = (float)($ticket->requested_amount_cr ?? 0);
         $bbRecCr = $ticket->bb_recommended_amount_cr !== null ? (float)$ticket->bb_recommended_amount_cr : null;
         $approvedCr = $ticket->approved_amount_cr !== null ? (float)$ticket->approved_amount_cr : ($ticket->status === PaymentRequest::STATUS_APPROVED ? $claimedCr : null);
+
+        $resolutionStage = $ticket->status === PaymentRequest::STATUS_APPROVED ? 'COMPLETED' : ($ticket->status === PaymentRequest::STATUS_REJECTED ? 'REJECTED' : 'PENDING');
+        $physicalProgress = (float)($ticket->physical_progress_pct ?: ($scheme?->physical_progress_pct ?: 0)) . '%';
 
         // Status description
         $statusLabels = [
@@ -173,9 +178,11 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
         return [
             $slNo,
             '#REQ-' . str_pad($ticket->id, 4, '0', STR_PAD_LEFT),
+            $resolutionStage,
             $stateName,
             $schemeName,
             $schemeCode,
+            $physicalProgress,
             $fundType,
             $instalment,
             number_format($claimedCr, 2),
@@ -195,7 +202,7 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
         $lastRow = max(2, $this->rowCount + 1);
 
         // Header styling
-        $sheet->getStyle('A1:P1')->applyFromArray([
+        $sheet->getStyle('A1:R1')->applyFromArray([
             'font' => [
                 'bold'  => true,
                 'color' => ['argb' => 'FFFFFFFF'],
@@ -215,7 +222,7 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
         $sheet->getRowDimension(1)->setRowHeight(32);
 
         // Border styling for entire data matrix
-        $sheet->getStyle("A1:P{$lastRow}")->applyFromArray([
+        $sheet->getStyle("A1:R{$lastRow}")->applyFromArray([
             'borders' => [
                 'allBorders' => [
                     'borderStyle' => Border::BORDER_THIN,
@@ -226,34 +233,48 @@ class TicketStatusExport implements FromCollection, WithHeadings, WithMapping, W
 
         // Alignment formatting for specific columns
         $sheet->getStyle("A2:A{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("B2:B{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("C2:C{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
-        $sheet->getStyle("E2:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("G2:G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("H2:J{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
-        $sheet->getStyle("L2:L{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
-        $sheet->getStyle("M2:N{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("B2:C{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("E2:E{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_LEFT);
+        $sheet->getStyle("F2:G{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("I2:I{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
+        $sheet->getStyle("J2:L{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_RIGHT);
+        $sheet->getStyle("N2:P{$lastRow}")->getAlignment()->setHorizontal(Alignment::HORIZONTAL_CENTER);
 
-        // Color highlighting on 'Pending With Whom' column (L)
+        // Color highlighting on Resolution Stage (C) and Pending With Whom column (N)
         for ($r = 2; $r <= $lastRow; $r++) {
-            $cellValue = (string) $sheet->getCell("L{$r}")->getValue();
+            $stageVal = (string) $sheet->getCell("C{$r}")->getValue();
+            if ($stageVal === 'COMPLETED') {
+                $sheet->getStyle("C{$r}")->getFill()->applyFromArray([
+                    'fillType'   => Fill::FILL_SOLID,
+                    'startColor' => ['argb' => 'FFD1FAE5'], // Soft emerald
+                ]);
+                $sheet->getStyle("C{$r}")->getFont()->setBold(true);
+            } elseif ($stageVal === 'PENDING') {
+                $sheet->getStyle("C{$r}")->getFill()->applyFromArray([
+                    'fillType'   => Fill::FILL_SOLID,
+                    'startColor' => ['argb' => 'FFFEF3C7'], // Soft amber
+                ]);
+                $sheet->getStyle("C{$r}")->getFont()->setBold(true);
+            }
+
+            $cellValue = (string) $sheet->getCell("N{$r}")->getValue();
             if (str_contains($cellValue, 'Brahmaputra Board')) {
-                $sheet->getStyle("L{$r}")->getFill()->applyFromArray([
+                $sheet->getStyle("N{$r}")->getFill()->applyFromArray([
                     'fillType'   => Fill::FILL_SOLID,
                     'startColor' => ['argb' => 'FFEDE9FE'], // Light violet
                 ]);
             } elseif (str_contains($cellValue, 'Ministry of Jal Shakti')) {
-                $sheet->getStyle("L{$r}")->getFill()->applyFromArray([
+                $sheet->getStyle("N{$r}")->getFill()->applyFromArray([
                     'fillType'   => Fill::FILL_SOLID,
                     'startColor' => ['argb' => 'FFDBEAFE'], // Light blue
                 ]);
             } elseif (str_contains($cellValue, 'State Government')) {
-                $sheet->getStyle("L{$r}")->getFill()->applyFromArray([
+                $sheet->getStyle("N{$r}")->getFill()->applyFromArray([
                     'fillType'   => Fill::FILL_SOLID,
                     'startColor' => ['argb' => 'FFFEF3C7'], // Light amber
                 ]);
             } elseif (str_contains($cellValue, 'Settled')) {
-                $sheet->getStyle("L{$r}")->getFill()->applyFromArray([
+                $sheet->getStyle("N{$r}")->getFill()->applyFromArray([
                     'fillType'   => Fill::FILL_SOLID,
                     'startColor' => ['argb' => 'FFD1FAE5'], // Light emerald
                 ]);
