@@ -7,32 +7,19 @@ echo       FMBAP PORTAL - LAN PRESENTATION LAUNCHER
 echo =========================================================
 echo.
 
-:: 1. Detect LAN IP address from active network adapter connected to gateway
-for /f "usebackq tokens=*" %%a in (`powershell -NoProfile -Command "(Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway -ne $null } | Select-Object -First 1).IPv4Address.IPAddress"`) do (
-    set IP=%%a
+:: 1. Detect Primary LAN IP
+set PRIMARY_IP=
+for /f "delims=" %%a in ('powershell -NoProfile -Command "(Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | Select-Object -ExpandProperty IPv4Address | Select-Object -ExpandProperty IPAddress)"') do (
+    if "!PRIMARY_IP!"=="" set PRIMARY_IP=%%a
 )
 
-:: Fallback if PowerShell returns empty
-if "%IP%"=="" (
-    for /f "tokens=4" %%a in ('route print ^| findstr 0.0.0.0 ^| findstr /v "0.0.0.0.*0.0.0.0.*0.0.0.0"') do (
-        set IP=%%a
-        goto :found_ip
-    )
-)
+if "%PRIMARY_IP%"=="" set PRIMARY_IP=10.177.22.41
+echo [INFO] Detected Primary LAN IP: %PRIMARY_IP%
 
-:found_ip
-if "%IP%"=="" (
-    set IP=10.177.22.41
-)
-
-echo [INFO] Detected LAN IP: %IP%
-
-:: 2. Check if Windows Firewall rule exists for Port 8000
-netsh advfirewall firewall show rule name="FMBAP Portal LAN (Port 8000)" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [NOTICE] Windows Firewall rule for Port 8000 not detected.
-    echo [NOTICE] Opening firewall helper. If Windows UAC prompts, please click "Yes"...
-    start /wait "" "%~dp0open-firewall-for-lan.bat"
+:: 2. Free Port 8000 if an old PHP process is still running
+for /f "tokens=5" %%p in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING"') do (
+    echo [INFO] Freeing Port 8000 (PID: %%p)...
+    taskkill /F /PID %%p >nul 2>&1
 )
 
 :: 3. Remove stale public/hot so compiled production bundle is used cleanly over LAN
@@ -47,20 +34,23 @@ if not exist "public\build\manifest.json" (
     call npm run build
 )
 
-:: 5. Ensure .env APP_URL matches LAN IP
-powershell -NoProfile -Command "(Get-Content .env) -replace '^APP_URL=.*', 'APP_URL=http://%IP%:8000' | Set-Content .env"
+:: 5. Update .env APP_URL to match detected LAN IP
+powershell -NoProfile -Command "(Get-Content .env) -replace '^APP_URL=.*', 'APP_URL=http://%PRIMARY_IP%:8000' | Set-Content .env"
 
 echo.
 echo =========================================================
-echo   LIVE PRESENTATION URL (Share with LAN / Phone / Laptop):
-echo   http://%IP%:8000
+echo   LIVE PRESENTATION URLS (Open on Phone / Laptop / Tablet):
+powershell -NoProfile -Command "Get-NetIPConfiguration | Where-Object IPv4DefaultGateway | ForEach-Object { Write-Host ('   * ' + $PSItem.InterfaceAlias + ': http://' + $PSItem.IPv4Address.IPAddress + ':8000') -ForegroundColor Green }"
 echo =========================================================
 echo.
-echo Requirements for other devices to connect:
-echo   1. The other device must be on the SAME Wi-Fi or LAN router.
-echo   2. Open a browser and enter: http://%IP%:8000
+echo Requirements to access from another device:
+echo   1. The phone or laptop must be on the SAME Wi-Fi router or office LAN.
+echo   2. Open Chrome/Safari/Edge on that device and go to:
+echo        - If on Wi-Fi:    http://192.168.1.190:8000
+echo        - If on Ethernet: http://10.177.22.41:8000
 echo.
-echo Server is starting... (Press Ctrl+C to stop)
+echo Server is running on all interfaces (0.0.0.0:8000)...
+echo Press Ctrl+C to stop.
 echo.
 
 php artisan serve --host 0.0.0.0 --port 8000

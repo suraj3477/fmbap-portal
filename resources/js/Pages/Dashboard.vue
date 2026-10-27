@@ -34,6 +34,12 @@ const isBB = computed(() => user.value?.role === 'board_official');
 const isMoJS = computed(() => user.value?.role === 'mojs_official');
 const isStateOfficial = computed(() => ['state_official', 'state'].includes(user.value?.role));
 const canSubmitDpr = computed(() => ['super_admin', 'board_official', 'state_official', 'state'].includes(user.value?.role));
+const canViewMis = computed(() => {
+    if (user.value?.can_view_mis !== undefined) {
+        return Boolean(user.value.can_view_mis);
+    }
+    return !isStateOfficial.value && (isBB.value || isMoJS.value || isSuperAdmin.value);
+});
 
 // Active Main Tab: 'TABLE' | 'GIS_MAP' | 'ANALYTICS'
 const activeMainTab = ref('TABLE');
@@ -420,6 +426,7 @@ const submitManualScheme = () => {
 
                     <div class="flex items-center gap-2">
                         <Link
+                            v-if="canViewMis"
                             :href="route('analytics.index')"
                             class="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-md shadow-xs transition"
                         >

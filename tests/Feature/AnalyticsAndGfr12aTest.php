@@ -122,6 +122,49 @@ class AnalyticsAndGfr12aTest extends TestCase
         $response->assertHeader('content-type', 'application/pdf');
     }
 
+    public function test_state_official_cannot_access_mis_report(): void
+    {
+        $stateUser = User::create([
+            'name'        => 'Assam State Engineer',
+            'email'       => 'state.test@assam.gov.in',
+            'password'    => bcrypt('password@123'),
+            'role'        => 'state_official',
+            'state'       => 'Assam',
+            'is_approved' => true,
+        ]);
+
+        $this->actingAs($stateUser)->get('/analytics')->assertStatus(403);
+        $this->actingAs($stateUser)->get('/analytics/export-excel')->assertStatus(403);
+        $this->actingAs($stateUser)->get('/analytics/export-tickets-excel')->assertStatus(403);
+        $this->actingAs($stateUser)->get('/analytics/export-project-monitoring-excel')->assertStatus(403);
+        $this->actingAs($stateUser)->get('/analytics/export-pdf')->assertStatus(403);
+    }
+
+    public function test_bb_and_mojs_officials_can_access_mis_report(): void
+    {
+        $bbUser = User::create([
+            'name'        => 'BB Officer',
+            'email'       => 'bb.test@gov.in',
+            'password'    => bcrypt('password@123'),
+            'role'        => 'board_official',
+            'is_approved' => true,
+        ]);
+
+        $mojsUser = User::create([
+            'name'        => 'MoJS Officer',
+            'email'       => 'mojs.test@gov.in',
+            'password'    => bcrypt('password@123'),
+            'role'        => 'mojs_official',
+            'is_approved' => true,
+        ]);
+
+        $this->actingAs($bbUser)->get('/analytics')->assertStatus(200);
+        $this->actingAs($bbUser)->get('/analytics/export-excel')->assertStatus(200);
+
+        $this->actingAs($mojsUser)->get('/analytics')->assertStatus(200);
+        $this->actingAs($mojsUser)->get('/analytics/export-excel')->assertStatus(200);
+    }
+
     public function test_gfr12a_prefill_data_endpoint(): void
     {
         $response = $this->actingAs($this->user)->get('/fund-release/gfr12a/data?scheme_id=' . $this->scheme->id);

@@ -32,6 +32,16 @@ const userInitials = computed(() => {
 const canViewMonitoring = computed(() =>
     ['board_official', 'mojs_official', 'super_admin'].includes(currentUser.value?.role)
 );
+
+const canViewMis = computed(() => {
+    if (currentUser.value?.can_view_mis !== undefined) {
+        return Boolean(currentUser.value.can_view_mis);
+    }
+    const role = currentUser.value?.role;
+    const isState = ['state_official', 'state', 'state_officer'].includes(role);
+    const isBbOrMojsOrAdmin = ['board_official', 'bb_official', 'bbrd_inspector', 'mojs_official', 'viewer', 'ministry', 'central_admin', 'super_admin'].includes(role);
+    return isBbOrMojsOrAdmin && !isState;
+});
 </script>
 
 <template>
@@ -249,6 +259,7 @@ const canViewMonitoring = computed(() =>
                         </Link>
 
                         <Link
+                            v-if="canViewMis"
                             :href="route('analytics.index')"
                             :class="[
                                 route().current('analytics.*') ? 'bg-white text-[#0F4C9F] shadow-xs font-extrabold' : 'text-blue-100/90 hover:bg-white/10 hover:text-white font-medium',
@@ -307,6 +318,7 @@ const canViewMonitoring = computed(() =>
                         BB Site Monitoring
                     </Link>
                     <Link
+                        v-if="canViewMis"
                         :href="route('analytics.index')"
                         class="block px-3 py-2 rounded-md text-xs font-bold text-white hover:bg-white/10"
                     >

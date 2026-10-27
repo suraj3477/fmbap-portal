@@ -37,6 +37,7 @@ class HandleInertiaRequests extends Middleware
                     'email' => $request->user()->email,
                     'role' => $request->user()->role,
                     'state' => $request->user()->state,
+                    'can_view_mis' => $request->user()->canViewMisReport(),
                 ] : null,
             ],
             'flash' => [

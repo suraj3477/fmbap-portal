@@ -216,11 +216,21 @@ Route::middleware(['auth', 'verified', 'approved'])->group(function () {
     // Audit Trail
     Route::get('/{module}/{id}/audit', [AuditLogController::class, 'index'])->name('audit');
 
-    // MODULE 4: Executive MIS Analytics & Parliamentary Reports
-    Route::prefix('analytics')->name('analytics.')->group(function () {
+    // MODULE 4: Executive MIS Analytics & Parliamentary Reports (Restricted to BB and MoJS - Not accessible for State)
+    Route::group([
+        'prefix' => 'analytics',
+        'as' => 'analytics.',
+        'middleware' => function ($request, $next) {
+            if ($request->user() && $request->user()->canViewMisReport()) {
+                return $next($request);
+            }
+            abort(403, 'Unauthorized access. The Executive MIS Report is only accessible to Brahmaputra Board and Ministry of Jal Shakti (MoJS).');
+        }
+    ], function () {
         Route::get('/', [MisAnalyticsController::class, 'index'])->name('index');
         Route::get('/export-excel', [MisAnalyticsController::class, 'exportExcel'])->name('export-excel');
         Route::get('/export-tickets-excel', [MisAnalyticsController::class, 'exportTicketsExcel'])->name('export-tickets-excel');
+        Route::get('/export-project-monitoring-excel', [MisAnalyticsController::class, 'exportProjectMonitoringExcel'])->name('export-project-monitoring-excel');
         Route::get('/export-pdf', [MisAnalyticsController::class, 'exportPdf'])->name('export-pdf');
     });
 

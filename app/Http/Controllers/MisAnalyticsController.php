@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Exports\FmbapMisReportExport;
+use App\Exports\ProjectMonitoringExport;
 use App\Exports\TicketStatusExport;
 use App\Models\PaymentRequest;
+use App\Models\ProgressReport;
 use App\Models\Scheme;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -14,20 +16,27 @@ use Maatwebsite\Excel\Facades\Excel;
 class MisAnalyticsController extends Controller
 {
     /**
+     * Ensure Executive MIS report is only accessible to BB and MoJS (and Super Admin), rejecting State users.
+     */
+    protected function authorizeMisAccess(): void
+    {
+        $user = auth()->user();
+        if (!$user || !$user->canViewMisReport()) {
+            abort(403, 'Unauthorized access. The Executive MIS Report is only accessible to Brahmaputra Board and Ministry of Jal Shakti (MoJS).');
+        }
+    }
+
+    /**
      * Executive MIS Analytics & Strategic Intelligence Cockpit
      */
     public function index(Request $request)
     {
+        $this->authorizeMisAccess();
+
         $user = auth()->user();
-        if ($user && $user->isState() && !empty($user->state)) {
-            $selectedState   = $user->state;
-            $availableStates = collect([$user->state]);
-            $availableBasins = Scheme::forUser($user)->whereNotNull('river_basin')->distinct()->pluck('river_basin')->filter()->sort()->values();
-        } else {
-            $selectedState   = $request->query('state', 'ALL');
-            $availableStates = Scheme::whereNotNull('state')->distinct()->pluck('state')->filter()->sort()->values();
-            $availableBasins = Scheme::whereNotNull('river_basin')->distinct()->pluck('river_basin')->filter()->sort()->values();
-        }
+        $selectedState   = $request->query('state', 'ALL');
+        $availableStates = Scheme::whereNotNull('state')->distinct()->pluck('state')->filter()->sort()->values();
+        $availableBasins = Scheme::whereNotNull('river_basin')->distinct()->pluck('river_basin')->filter()->sort()->values();
 
         $selectedBasin  = $request->query('basin', 'ALL');
         $selectedStatus = $request->query('status', 'ALL');
@@ -54,13 +63,14 @@ class MisAnalyticsController extends Controller
      */
     public function exportExcel(Request $request)
     {
-        $user   = auth()->user();
-        $state  = ($user && $user->isState() && !empty($user->state)) ? $user->state : $request->query('state');
+        $this->authorizeMisAccess();
+
+        $state  = $request->query('state', 'ALL');
         $basin  = $request->query('basin');
         $status = $request->query('status');
 
         $fileName = 'FMBAP_Parliamentary_MIS_Report_' . date('Ymd_His') . '.xlsx';
-        return Excel::download(new FmbapMisReportExport($state, $basin, $status), $fileName);
+        return Excel::download(new FmbapMisReportExport($state === 'ALL' ? null : $state, $basin, $status), $fileName);
     }
 
     /**
@@ -68,13 +78,30 @@ class MisAnalyticsController extends Controller
      */
     public function exportTicketsExcel(Request $request)
     {
-        $user        = auth()->user();
-        $state       = ($user && $user->isState() && !empty($user->state)) ? $user->state : $request->query('state');
+        $this->authorizeMisAccess();
+
+        $state       = $request->query('state', 'ALL');
         $status      = $request->query('status');
         $pendingWith = $request->query('pending_with');
 
         $fileName = 'FMBAP_Ticket_Status_Tracker_' . date('Ymd_His') . '.xlsx';
-        return Excel::download(new TicketStatusExport($state, $status, $pendingWith), $fileName);
+        return Excel::download(new TicketStatusExport($state === 'ALL' ? null : $state, $status, $pendingWith), $fileName);
+    }
+
+    /**
+     * Download Project Status & Pendency Monitoring Excel Spreadsheet
+     */
+    public function exportProjectMonitoringExcel(Request $request)
+    {
+        $this->authorizeMisAccess();
+
+        $state       = $request->query('state', 'ALL');
+        $basin       = $request->query('basin');
+        $status      = $request->query('status');
+        $pendingWith = $request->query('pending_with');
+
+        $fileName = 'FMBAP_Project_Monitoring_Report_' . date('Ymd_His') . '.xlsx';
+        return Excel::download(new ProjectMonitoringExport($state === 'ALL' ? null : $state, $basin, $status, $pendingWith), $fileName);
     }
 
     /**
@@ -82,8 +109,9 @@ class MisAnalyticsController extends Controller
      */
     public function exportPdf(Request $request)
     {
-        $user   = auth()->user();
-        $state  = ($user && $user->isState() && !empty($user->state)) ? $user->state : $request->query('state', 'ALL');
+        $this->authorizeMisAccess();
+
+        $state  = $request->query('state', 'ALL');
         $basin  = $request->query('basin', 'ALL');
         $status = $request->query('status', 'ALL');
         $fy     = $request->query('fy', 'ALL');
@@ -114,15 +142,12 @@ class MisAnalyticsController extends Controller
     protected function computeAnalytics(string $selectedState = 'ALL', string $selectedBasin = 'ALL', string $selectedStatus = 'ALL', string $selectedFY = 'ALL'): array
     {
         $user = auth()->user();
-        if ($user && $user->isState() && !empty($user->state)) {
-            $selectedState = $user->state;
-        }
 
-        $query = Scheme::forUser($user)->with([
+        $query = Scheme::query()->with([
             'paymentRequests.bbMonitoringReport',
             'progressReports' => fn($q) => $q->latest()->limit(3),
             'fmbapProject',
-        ]);
+        ])->orderByDesc('updated_at')->orderByDesc('id');
 
         if ($selectedState !== 'ALL') {
             $query->where('state', $selectedState);
@@ -453,11 +478,12 @@ class MisAnalyticsController extends Controller
             'overdue_claims_count' => $overdueClaimsCount,
         ];
 
-        // ── 8. Parliamentary Register Table ──────────────────────────────────────
-        $parliamentaryList = $schemes->map(function ($s) {
+        // ── 8. Project Status & Pendency Monitoring Matrix ──────────────────────────
+        $projectMonitoringList = $schemes->map(function ($s) {
             $sanctioned = (float)$s->sanctioned_amount_cr;
             $centralPct = (float)($s->central_share_pct ?: 90);
             $centralEntitlement = $sanctioned * ($centralPct / 100);
+            $stateEntitlement = max(0, $sanctioned - $centralEntitlement);
 
             $released = (float)$s->paymentRequests->where('status', PaymentRequest::STATUS_APPROVED)->sum(function($r) {
                 return $r->approved_amount_cr !== null ? (float)$r->approved_amount_cr : (float)$r->requested_amount_cr;
@@ -467,36 +493,351 @@ class MisAnalyticsController extends Controller
             }
 
             $balanceCentral = max(0, round($centralEntitlement - $released, 2));
+            $disbursalPct = $centralEntitlement > 0 ? round(($released / $centralEntitlement) * 100, 1) : 0;
 
-            // Latest payment request
+            $isCompleted = ($s->physical_status === 'Completed' || (float)$s->physical_progress_pct >= 100);
             $latestPr = $s->paymentRequests->sortByDesc('id')->first();
             $latestReport = $s->progressReports->sortByDesc('id')->first();
+            
+            // Priority 1: In-flight submitted payment request (BB scrutiny or MoJS release or State correction)
+            $inFlightPr = $s->paymentRequests->filter(fn($r) => in_array($r->status, [
+                PaymentRequest::STATUS_FORWARDED_TO_MOJS,
+                PaymentRequest::STATUS_SUBMITTED_TO_BB,
+                PaymentRequest::STATUS_BB_MONITORING,
+                PaymentRequest::STATUS_NEEDS_CORRECTION,
+            ]))->sortByDesc('id')->first();
+
+            // Priority 2: Draft payment request
+            $draftPr = $s->paymentRequests->where('status', PaymentRequest::STATUS_DRAFT)->sortByDesc('id')->first();
+            $activePr = $inFlightPr ?: $draftPr;
+
+            // Active in-flight progress report
+            $activeReport = $s->progressReports->filter(fn($r) => in_array($r->status, [
+                ProgressReport::STATUS_SUBMITTED,
+                ProgressReport::STATUS_REVIEWED_BY_BB,
+                ProgressReport::STATUS_NEEDS_CORRECTION,
+            ]))->sortByDesc('id')->first();
+
+            $latestApprovedPr = $s->paymentRequests->where('status', PaymentRequest::STATUS_APPROVED)->sortByDesc('id')->first();
+
+            if ($activePr) {
+                $hasActiveClaim = true;
+                $pendencyType = 'FUND';
+                $pendencyTypeLabel = '💰 Fund Release';
+                $activeTicketId = '#REQ-' . str_pad($activePr->id, 4, '0', STR_PAD_LEFT);
+                $activeClaimId = $activePr->id;
+                $claimAmountCr = (float)($activePr->requested_amount_cr ?? 0);
+                $claimInstalment = $activePr->instalment_number ? "Instalment #{$activePr->instalment_number}" : 'Fund Release';
+                $fromDate = $activePr->submitted_at ? \Carbon\Carbon::parse($activePr->submitted_at) : ($activePr->created_at ? \Carbon\Carbon::parse($activePr->created_at) : null);
+                $daysCount = $fromDate ? (int) abs($fromDate->diffInDays(now())) : 0;
+                $dateRaisedStr = $fromDate ? $fromDate->format('d/m/Y') : 'N/A';
+                $lastActionDate = $activePr->updated_at ? \Carbon\Carbon::parse($activePr->updated_at)->format('d/m/Y') : $dateRaisedStr;
+                $remarks = $activePr->bb_remarks ?: ($activePr->mojs_remarks ?: ($activePr->state_remarks ?: 'Under active statutory review'));
+
+                switch ($activePr->status) {
+                    case PaymentRequest::STATUS_SUBMITTED_TO_BB:
+                    case PaymentRequest::STATUS_BB_MONITORING:
+                        $pendingWithParty = 'BB';
+                        $pendingWith = 'Brahmaputra Board (BB)';
+                        $pendingDesk = 'BB Field Monitoring & Scrutiny Cell';
+                        $stageLabel = $activePr->status === PaymentRequest::STATUS_BB_MONITORING ? 'BB Field Monitoring' : 'Submitted to BB';
+                        $pendingWhatTitle = "Fund Claim {$activeTicketId} (₹{$claimAmountCr} Cr)";
+                        $pendingWhatDetail = "{$claimInstalment} claim for ₹{$claimAmountCr} Cr submitted by State; awaiting BB field verification & technical scrutiny.";
+                        $actionRequired = 'Conduct site verification and forward recommendation note to MoJS';
+                        break;
+                    case PaymentRequest::STATUS_FORWARDED_TO_MOJS:
+                        $pendingWithParty = 'MOJS';
+                        $pendingWith = 'Ministry of Jal Shakti (MoJS)';
+                        $pendingDesk = 'MoJS Finance & Sanction Wing';
+                        $stageLabel = 'Recommended & Pending at MoJS';
+                        $pendingWhatTitle = "Central Release {$activeTicketId} (₹{$claimAmountCr} Cr)";
+                        $pendingWhatDetail = "{$claimInstalment} claim for ₹{$claimAmountCr} Cr recommended by BB; awaiting MoJS central sanction order & PFMS release.";
+                        $actionRequired = 'Issue central sanction order and release funds to State SNA account';
+                        break;
+                    case PaymentRequest::STATUS_NEEDS_CORRECTION:
+                        $pendingWithParty = 'STATE';
+                        $pendingWith = "State Government ({$s->state})";
+                        $pendingDesk = 'State WRD Requisition Desk';
+                        $stageLabel = 'Clarification Required (State)';
+                        $pendingWhatTitle = "Claim Rectification {$activeTicketId} (₹{$claimAmountCr} Cr)";
+                        $pendingWhatDetail = "Observations raised on {$claimInstalment} claim; awaiting rectified vouchers & clarification from State WRD.";
+                        $actionRequired = 'Submit rectified compliance vouchers and re-submit claim to Brahmaputra Board';
+                        break;
+                    default:
+                        $pendingWithParty = 'STATE';
+                        $pendingWith = "State Government ({$s->state})";
+                        $pendingDesk = 'State WRD Drafting Cell';
+                        $stageLabel = 'Draft Claim (State)';
+                        $pendingWhatTitle = "Draft Claim {$activeTicketId} (₹{$claimAmountCr} Cr)";
+                        $pendingWhatDetail = "Draft {$claimInstalment} claim prepared; awaiting final submission by State WRD.";
+                        $actionRequired = 'Finalize requisition & submit claim to Brahmaputra Board';
+                        break;
+                }
+            } elseif ($isCompleted) {
+                $hasActiveClaim = false;
+                $pendencyType = 'NONE';
+                $pendencyTypeLabel = '✅ No Pendency';
+                $activeTicketId = 'COMPLETED';
+                $activeClaimId = null;
+                $claimAmountCr = 0.0;
+                $claimInstalment = 'Completed';
+                $pendingWithParty = 'SETTLED';
+                $pendingWith = 'Settled / No Pendency';
+                $pendingDesk = 'Commissioned Assets';
+                $stageLabel = 'Project Completed (100%)';
+                $pendingWhatTitle = 'Project Completed (100%)';
+                $pendingWhatDetail = 'Scheme 100% physically executed and commissioned on ground.';
+                $actionRequired = 'Project closeout & asset registry complete';
+                $daysCount = 0;
+                $dateRaisedStr = 'Completed';
+                $lastActionDate = $s->updated_at ? \Carbon\Carbon::parse($s->updated_at)->format('d/m/Y') : 'Completed';
+                $remarks = 'Works 100% completed on ground and validated.';
+            } elseif ($activeReport) {
+                $hasActiveClaim = false;
+                $pendencyType = 'PROJECT';
+                $pendencyTypeLabel = '🏗️ Project Report';
+                $activeTicketId = '#REP-' . str_pad($activeReport->id, 4, '0', STR_PAD_LEFT);
+                $activeClaimId = null;
+                $claimAmountCr = 0.0;
+                $claimInstalment = 'Monthly Progress Report';
+                $fromDate = $activeReport->created_at ? \Carbon\Carbon::parse($activeReport->created_at) : null;
+                $daysCount = $fromDate ? (int) abs($fromDate->diffInDays(now())) : 0;
+                $dateRaisedStr = $fromDate ? $fromDate->format('d/m/Y') : 'N/A';
+                $lastActionDate = $activeReport->updated_at ? \Carbon\Carbon::parse($activeReport->updated_at)->format('d/m/Y') : $dateRaisedStr;
+                $remarks = $activeReport->bb_remarks ?: ($activeReport->mojs_remarks ?: 'Monthly progress report under review');
+
+                switch ($activeReport->status) {
+                    case ProgressReport::STATUS_SUBMITTED:
+                        $pendingWithParty = 'BB';
+                        $pendingWith = 'Brahmaputra Board (BB)';
+                        $pendingDesk = 'BB Field Progress Cell';
+                        $stageLabel = 'Monthly Report Pending at BB';
+                        $pendingWhatTitle = "Progress Report {$activeTicketId}";
+                        $pendingWhatDetail = "Monthly progress report submitted by State; awaiting BB geo-tag photo verification.";
+                        $actionRequired = 'Verify physical progress on ground and validate geo-tagged photos';
+                        break;
+                    case ProgressReport::STATUS_REVIEWED_BY_BB:
+                        $pendingWithParty = 'MOJS';
+                        $pendingWith = 'Ministry of Jal Shakti (MoJS)';
+                        $pendingDesk = 'MoJS Monitoring Division';
+                        $stageLabel = 'Quarterly Progress at MoJS';
+                        $pendingWhatTitle = "Quarterly Progress Review {$activeTicketId}";
+                        $pendingWhatDetail = "Quarterly progress report reviewed by BB; awaiting MoJS milestone concurrence.";
+                        $actionRequired = 'Review physical milestone achievements against scheme timeline';
+                        break;
+                    default:
+                        $pendingWithParty = 'STATE';
+                        $pendingWith = "State Government ({$s->state})";
+                        $pendingDesk = 'State WRD Field Division';
+                        $stageLabel = 'Report Correction Required';
+                        $pendingWhatTitle = "Report Correction {$activeTicketId}";
+                        $pendingWhatDetail = "Deficiencies noted in progress report; awaiting re-submission by State.";
+                        $actionRequired = 'Update measurements & re-submit report';
+                        break;
+                }
+            } elseif ($latestApprovedPr && empty($latestApprovedPr->utilization_certificate_path)) {
+                $hasActiveClaim = false;
+                $pendencyType = 'FUND';
+                $pendencyTypeLabel = '💰 Fund (UC Awaited)';
+                $claimAmountCr = (float)($latestApprovedPr->approved_amount_cr ?: $latestApprovedPr->requested_amount_cr);
+                $activeTicketId = '#UC-' . str_pad($latestApprovedPr->id, 4, '0', STR_PAD_LEFT);
+                $activeClaimId = $latestApprovedPr->id;
+                $claimInstalment = 'Utilization Certificate';
+                $pendingWithParty = 'STATE';
+                $pendingWith = "State Government ({$s->state})";
+                $pendingDesk = 'State WRD Accounts / SNA Cell';
+                $stageLabel = 'UC Pending (State)';
+                $pendingWhatTitle = "Utilization Certificate (UC) Awaited (₹{$claimAmountCr} Cr)";
+                $pendingWhatDetail = "Funds of ₹{$claimAmountCr} Cr released; Utilization Certificate (Form GFR-12A) pending from State WRD.";
+                $actionRequired = 'State WRD to submit countersigned Utilization Certificate (UC) on portal';
+                $fromDate = $latestApprovedPr->approved_at ?: $latestApprovedPr->updated_at;
+                $daysCount = $fromDate ? (int) min(180, abs(\Carbon\Carbon::parse($fromDate)->diffInDays(now()))) : 20;
+                $dateRaisedStr = $fromDate ? \Carbon\Carbon::parse($fromDate)->format('d/m/Y') : 'Ongoing';
+                $lastActionDate = $dateRaisedStr;
+                $remarks = 'Fund release approved; awaiting submission of Form GFR-12A Utilization Certificate.';
+            } else {
+                $hasActiveClaim = false;
+                $pendencyType = 'PROJECT';
+                $pendencyTypeLabel = '🏗️ Project Execution';
+                $activeTicketId = 'EXECUTION';
+                $activeClaimId = null;
+                $claimAmountCr = 0.0;
+                $claimInstalment = 'Civil Works Execution';
+                $pendingWithParty = 'STATE';
+                $pendingWith = "State Government ({$s->state})";
+                $pendingDesk = 'State WRD Field Execution Wing';
+                $pct = (float)$s->physical_progress_pct;
+                if ($pct <= 0) {
+                    $stageLabel = 'Not Started (0%)';
+                    $pendingWhatTitle = 'Ground Mobilization & Tender Award';
+                    $pendingWhatDetail = 'Scheme sanctioned at 0% progress; tender award and contractor mobilization pending at State.';
+                    $actionRequired = 'State to finalize work tenders, award contracts, and mobilize site machinery';
+                } elseif ($pct < 20) {
+                    $stageLabel = 'Lagging Execution (<20%)';
+                    $pendingWhatTitle = "Slow Physical Execution ({$pct}%)";
+                    $pendingWhatDetail = "Physical progress is lagging under 20%; ground civil works execution pending at State.";
+                    $actionRequired = 'Expedite civil works and submit next monthly progress report';
+                } else {
+                    $stageLabel = "Ongoing Works ({$pct}%)";
+                    $pendingWhatTitle = "Civil Works Ongoing ({$pct}%)";
+                    $pendingWhatDetail = "Civil works ongoing on site ({$pct}% completed); next milestone claim pending State submission.";
+                    $actionRequired = 'Continue construction milestones and submit next instalment claim';
+                }
+                $fromDate = $s->updated_at ? \Carbon\Carbon::parse($s->updated_at) : null;
+                $daysCount = $fromDate ? (int) min(90, abs($fromDate->diffInDays(now()))) : 15;
+                $dateRaisedStr = $fromDate ? $fromDate->format('d/m/Y') : 'Ongoing';
+                $lastActionDate = $dateRaisedStr;
+                $remarks = 'Ground execution ongoing under State Executive Engineer.';
+            }
+
+            if ($pendingWithParty === 'SETTLED') {
+                $agingBucket = 'none';
+                $agingLabel = 'Completed';
+                $agingBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-300 font-bold';
+                $pendencyText = 'Completed';
+                $isOverdue = false;
+            } else {
+                $pendencyText = $daysCount === 0 ? 'Today (0d)' : "{$daysCount} days";
+                $isOverdue = ($daysCount > 30);
+                if ($daysCount <= 15) {
+                    $agingBucket = '0_15';
+                    $agingLabel = '< 15 Days (Normal)';
+                    $agingBadgeClass = 'bg-emerald-50 text-emerald-800 border-emerald-200 font-bold';
+                } elseif ($daysCount <= 30) {
+                    $agingBucket = '16_30';
+                    $agingLabel = '16 - 30 Days (Standard Window)';
+                    $agingBadgeClass = 'bg-blue-50 text-blue-800 border-blue-200 font-bold';
+                } elseif ($daysCount <= 60) {
+                    $agingBucket = '31_60';
+                    $agingLabel = '31 - 60 Days (Delayed)';
+                    $agingBadgeClass = 'bg-amber-100 text-amber-900 border-amber-300 font-black';
+                } else {
+                    $agingBucket = 'above_60';
+                    $agingLabel = '> 60 Days (Critical Delay)';
+                    $agingBadgeClass = 'bg-rose-100 text-rose-900 border-rose-300 font-black animate-pulse';
+                }
+            }
 
             return [
                 'id'                     => $s->id,
                 'scheme_code'            => $s->scheme_code,
                 'scheme_name'            => $s->scheme_name,
                 'state'                  => $s->state,
-                'district'               => $s->district ?: $s->division ?: 'State WRD',
+                'district'               => $s->district ?: ($s->division ?: 'State WRD'),
                 'division'               => $s->division ?: 'WRD Division',
                 'river_basin'            => $s->river_basin ?: 'Brahmaputra',
                 'plan_period'            => $s->plan_period ?: '15th Finance Commission',
-                'sanctioned_amount_cr'   => number_format($sanctioned, 2),
+                'project_type'           => $s->project_type ?: 'Flood Management & Erosion Protection',
+                'updated_at'             => $s->updated_at?->toIso8601String(),
+                'sanctioned_amount_cr'   => number_format($sanctioned, 2, '.', ''),
+                'sanctioned_amount_raw'  => round($sanctioned, 2),
                 'central_share_pct'      => (int)$centralPct,
                 'state_share_pct'        => (int)(100 - $centralPct),
-                'central_share_cr'       => number_format($centralEntitlement, 2),
-                'released_central_cr'    => number_format($released, 2),
-                'balance_central_cr'     => number_format($balanceCentral, 2),
+                'central_share_cr'       => number_format($centralEntitlement, 2, '.', ''),
+                'state_share_cr'         => number_format($stateEntitlement, 2, '.', ''),
+                'released_central_cr'    => number_format($released, 2, '.', ''),
+                'released_central_raw'   => round($released, 2),
+                'balance_central_cr'     => number_format($balanceCentral, 2, '.', ''),
+                'balance_central_raw'    => round($balanceCentral, 2),
+                'disbursal_velocity_pct' => $disbursalPct,
                 'physical_progress_pct'  => (float)($s->physical_progress_pct ?: 0),
                 'financial_progress_pct' => (float)($latestReport?->financial_progress_pct ?: ($centralEntitlement > 0 ? round(($released / $centralEntitlement) * 100, 1) : 0)),
-                'physical_status'        => $s->physical_status ?: 'Ongoing',
+                'physical_status'        => $s->physical_status ?: ($isCompleted ? 'Completed' : 'Ongoing'),
+                'is_completed'           => $isCompleted,
+                'has_active_claim'       => $hasActiveClaim,
+                'active_ticket_id'       => $activeTicketId,
+                'active_claim_id'        => $activeClaimId,
+                'active_claim_amount_cr' => $claimAmountCr,
+                'claim_instalment'       => $claimInstalment,
+                // Pendency Classification: Who, What (Fund or Project), Duration, and Action
+                'pendency_type'          => $pendencyType,
+                'pendency_type_label'    => $pendencyTypeLabel,
+                'is_fund_pendency'       => ($pendencyType === 'FUND'),
+                'is_project_pendency'    => ($pendencyType === 'PROJECT'),
+                'pending_what_title'     => $pendingWhatTitle,
+                'pending_what_detail'    => $pendingWhatDetail,
+                'pending_with_party'     => $pendingWithParty,
+                'pending_with'           => $pendingWith,
+                'pending_desk'           => $pendingDesk,
+                'workflow_stage_label'   => $stageLabel,
+                'action_required'        => $actionRequired,
+                'date_raised'            => $dateRaisedStr,
+                'last_action_date'       => $lastActionDate,
+                'days_pending'           => $daysCount,
+                'pendency_label'         => $pendencyText,
+                'aging_bucket'           => $agingBucket,
+                'aging_label'            => $agingLabel,
+                'aging_badge_class'      => $agingBadgeClass,
+                'is_overdue'             => $isOverdue,
+                'sla_status'             => $isCompleted ? 'COMPLETED' : ($isOverdue ? 'DELAYED' : 'ON_TRACK'),
                 'payment_requests_count' => $s->paymentRequests->count(),
-                'latest_sanction_no'     => $latestPr?->sanction_order_no ?: 'Pending Sanction',
+                'latest_sanction_no'     => $latestPr?->sanction_order_no ?: ($isCompleted ? 'Sanctioned' : 'Pending'),
                 'latest_sanction_date'   => $latestPr?->sanction_order_date?->format('d/m/Y') ?: 'N/A',
-                'latest_inspection_date' => $latestReport?->bb_reviewed_at?->format('d/m/Y') ?: 'Routine Verification',
-                'active_claim_status'    => $latestPr?->status ?: 'NO_CLAIMS',
+                'latest_inspection_date' => $latestReport?->bb_reviewed_at?->format('d/m/Y') ?: 'N/A',
+                'active_claim_status'    => $activePr?->status ?: ($isCompleted ? 'COMPLETED' : 'NO_ACTIVE_CLAIM'),
+                'remarks'                => $remarks,
             ];
         });
+
+        // Compute Project Monitoring Executive KPIs
+        $pmTotal = $projectMonitoringList->count();
+        $pmPendingBb = $projectMonitoringList->filter(fn($p) => $p['pending_with_party'] === 'BB');
+        $pmPendingMojs = $projectMonitoringList->filter(fn($p) => $p['pending_with_party'] === 'MOJS');
+        $pmPendingState = $projectMonitoringList->filter(fn($p) => $p['pending_with_party'] === 'STATE');
+        $pmSettled = $projectMonitoringList->filter(fn($p) => $p['pending_with_party'] === 'SETTLED');
+        $pmOverdue = $projectMonitoringList->filter(fn($p) => $p['is_overdue']);
+        $pmCriticalOverdue = $projectMonitoringList->filter(fn($p) => $p['aging_bucket'] === 'above_60');
+
+        $pendingProjectsOnly = $projectMonitoringList->filter(fn($p) => $p['pending_with_party'] !== 'SETTLED');
+        $avgPendingDays = $pendingProjectsOnly->count() > 0 ? round($pendingProjectsOnly->avg('days_pending'), 1) : 0;
+
+        $fundPendencyList = $projectMonitoringList->filter(fn($p) => $p['is_fund_pendency']);
+        $projectPendencyList = $projectMonitoringList->filter(fn($p) => $p['is_project_pendency']);
+
+        $projectMonitoringKpis = [
+            'total_projects'             => $pmTotal,
+            // BB
+            'pending_bb_count'           => $pmPendingBb->count(),
+            'pending_bb_amount_cr'       => round($pmPendingBb->sum('active_claim_amount_cr'), 2),
+            'pending_bb_fund_count'      => $pmPendingBb->filter(fn($p) => $p['is_fund_pendency'])->count(),
+            'pending_bb_project_count'   => $pmPendingBb->filter(fn($p) => $p['is_project_pendency'])->count(),
+            // MoJS
+            'pending_mojs_count'         => $pmPendingMojs->count(),
+            'pending_mojs_amount_cr'     => round($pmPendingMojs->sum('active_claim_amount_cr'), 2),
+            'pending_mojs_fund_count'    => $pmPendingMojs->filter(fn($p) => $p['is_fund_pendency'])->count(),
+            'pending_mojs_project_count' => $pmPendingMojs->filter(fn($p) => $p['is_project_pendency'])->count(),
+            // State
+            'pending_state_count'        => $pmPendingState->count(),
+            'pending_state_amount_cr'    => round($pmPendingState->sum('active_claim_amount_cr'), 2),
+            'pending_state_fund_count'   => $pmPendingState->filter(fn($p) => $p['is_fund_pendency'])->count(),
+            'pending_state_project_count'=> $pmPendingState->filter(fn($p) => $p['is_project_pendency'])->count(),
+            // Totals by Category
+            'fund_pendency_count'        => $fundPendencyList->count(),
+            'fund_pendency_amount_cr'    => round($fundPendencyList->sum('active_claim_amount_cr'), 2),
+            'project_pendency_count'     => $projectPendencyList->count(),
+            // Settled & Overdue
+            'settled_count'              => $pmSettled->count(),
+            'overdue_count'              => $pmOverdue->count(),
+            'critical_overdue_count'     => $pmCriticalOverdue->count(),
+            'avg_pendency_days'          => $avgPendingDays,
+            // Project Status Totals
+            'total_sanctioned_cr'        => round($totalSanctionedCr, 2),
+            'total_central_share_cr'     => round($totalCentralShareCr, 2),
+            'total_released_cr'          => round($totalReleasedCr, 2),
+            'disbursal_velocity'         => $disbursalVelocity,
+            'avg_physical_progress'      => $avgPhysicalProgress,
+            'completed_count'            => $completedCount,
+            'ongoing_count'              => $ongoingCount,
+            'stalled_count'              => $stalledCount,
+            'aging_distribution'         => [
+                'under_15'   => $projectMonitoringList->filter(fn($p) => $p['aging_bucket'] === '0_15')->count(),
+                'days_16_30' => $projectMonitoringList->filter(fn($p) => $p['aging_bucket'] === '16_30')->count(),
+                'days_31_60' => $projectMonitoringList->filter(fn($p) => $p['aging_bucket'] === '31_60')->count(),
+                'above_60'   => $projectMonitoringList->filter(fn($p) => $p['aging_bucket'] === 'above_60')->count(),
+            ],
+        ];
+
+        $parliamentaryList = $projectMonitoringList;
 
         // ── 9. Ticket Status & Pendency Tracker ─────────────────────────────
         $ticketQuery = PaymentRequest::with('scheme')->forUser($user)->latest('id');
@@ -663,8 +1004,10 @@ class MisAnalyticsController extends Controller
             'category_matrix'       => $categoryMatrix,
             'discrepancies'         => $discrepancies,
             'bottlenecks'           => $bottlenecks,
-            'parliamentary_list'    => $parliamentaryList,
-            'ticket_tracker'        => $ticketTracker,
+            'parliamentary_list'      => $parliamentaryList,
+            'project_monitoring'      => $projectMonitoringList,
+            'project_monitoring_kpis' => $projectMonitoringKpis,
+            'ticket_tracker'          => $ticketTracker,
         ];
     }
 }

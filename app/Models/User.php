@@ -54,22 +54,27 @@ class User extends Authenticatable
 
     public function isState(): bool
     {
-        return in_array($this->role, ['state_official', 'state']);
+        return in_array($this->role, ['state_official', 'state', 'state_officer']);
     }
 
     public function isBB(): bool
     {
-        return in_array($this->role, ['board_official', 'bb_official']);
+        return in_array($this->role, ['board_official', 'bb_official', 'bbrd_inspector']);
     }
 
     public function isMoJS(): bool
     {
-        return in_array($this->role, ['mojs_official', 'viewer', 'ministry']);
+        return in_array($this->role, ['mojs_official', 'viewer', 'ministry', 'central_admin']);
     }
 
     public function isSuperAdmin(): bool
     {
         return $this->role === 'super_admin';
+    }
+
+    public function canViewMisReport(): bool
+    {
+        return ($this->isBB() || $this->isMoJS() || $this->isSuperAdmin()) && !$this->isState();
     }
 
     // ── New Module Relations ──────────────────────────────────────────────────

@@ -34,6 +34,7 @@ class FmbapMisReportExport implements WithMultipleSheets
     public function sheets(): array
     {
         return [
+            new ProjectMonitoringExport($this->state, $this->basin, $this->status),
             new MisMacroSummarySheet($this->state, $this->basin, $this->status),
             new MisStateScorecardSheet($this->state, $this->basin, $this->status),
             new MisParliamentaryRegisterSheet($this->state, $this->basin, $this->status),
