@@ -122,7 +122,7 @@ def build_clean_presentation(output_file):
     intro_points = [
         ("Mandate", "Central Sector Scheme monitoring 30 flood management and anti-erosion works under Ministry of Jal Shakti across North-Eastern states."),
         ("Funding Patterns", "Supports all Govt patterns: 90:10 (NE States), 60:40 / 50:50 (General States), and 100:0 (Border RMBA works)."),
-        ("Problem Solved", "Replaces slow 60-90 day postal file routing with 24-48 hour real-time digital approvals."),
+        ("Problem Solved", "Replaces physical paper file movement and manual registers with an integrated, paperless digital scrutiny and approval workflow."),
         ("Live Deployment", "Production portal is live at https://103.162.247.169/dashboard with all 30 schemes preloaded.")
     ]
     for h, b in intro_points:
@@ -150,7 +150,7 @@ def build_clean_presentation(output_file):
         ("Schemes Catalogue", "Codified register of all 30 schemes with auto-calculated funding splits (90:10, 60:40, 100:0), tributaries, and GPS bounds."),
         ("Form GFR 12-A Engine", "Auto-calculates grant balances and generates statutory Utilization Certificate PDFs with zero arithmetic errors."),
         ("Geo-Tagged Site Audits", "Mandatory mobile riverbank photos with device GPS coordinates and timestamps; blocks duplicate or stock photos."),
-        ("River Basin GIS Map", "Real-time spatial tracking across Teesta, Barak, Dhansiri, Lohit, Simsang & Siang basins with satellite views."),
+        ("River Basin GIS Map", "Interactive spatial tracking across Teesta, Barak, Dhansiri, Lohit, Simsang & Siang basins with satellite views."),
         ("File Pendency Radar", "Live desk-level tracking (State WRD / Board / MoJS) with aging counters and red alerts for overdue files.")
     ]
     for h, b in feature_points:
@@ -208,7 +208,7 @@ def build_clean_presentation(output_file):
     p_s4.space_before = Pt(14)
 
     benefit_points = [
-        ("Rapid Processing", "Reduces file movement from 60-90 days to 24-48 hours; eliminates files 'lost in transit'."),
+        ("Streamlined Processing", "Paperless file movement eliminates physical courier delays and completely prevents files from getting lost in transit."),
         ("Audit Compliance", "100% tamper-proof records with GPS photos protect officials against CAG audit objections."),
         ("Financial Accuracy", "Automated calculations prevent math mismatches and block claims exceeding physical work."),
         ("Executive Oversight", "Provides Board Leadership instant command via live GIS tracking, pendency alerts, and 1-click reports.")
