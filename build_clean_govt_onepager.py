@@ -74,7 +74,7 @@ def build_clean_presentation(output_file):
     r0.font.color.rgb = C_DARK
 
     r1 = p_kpi.add_run()
-    r1.text = "Sanctioned Outlay: ₹3,740.81 Cr (30 Schemes • 90:10 Ratio)   |   "
+    r1.text = "Sanctioned Outlay: ₹3,740.81 Cr (30 Approved Schemes)   |   "
     r1.font.bold = True
     r1.font.size = Pt(10.5)
     r1.font.color.rgb = C_BLUE
@@ -121,7 +121,7 @@ def build_clean_presentation(output_file):
 
     intro_points = [
         ("Mandate", "Central Sector Scheme monitoring 30 flood management and anti-erosion works under Ministry of Jal Shakti across North-Eastern states."),
-        ("Funding Pattern", "Special category funding: 90% Central Assistance : 10% State matching share."),
+        ("Funding Patterns", "Supports all Govt patterns: 90:10 (NE States), 60:40 / 50:50 (General States), and 100:0 (Border RMBA works)."),
         ("Problem Solved", "Replaces slow 60-90 day postal file routing with 24-48 hour real-time digital approvals."),
         ("Live Deployment", "Production portal is live at https://103.162.247.169/dashboard with all 30 schemes preloaded.")
     ]
@@ -147,7 +147,7 @@ def build_clean_presentation(output_file):
     p_s2.space_before = Pt(14)
 
     feature_points = [
-        ("Schemes Catalogue", "Codified register of all 30 schemes (SK-01, AS-12) with locked 90:10 funding splits, tributaries, and GPS bounds."),
+        ("Schemes Catalogue", "Codified register of all 30 schemes with auto-calculated funding splits (90:10, 60:40, 100:0), tributaries, and GPS bounds."),
         ("Form GFR 12-A Engine", "Auto-calculates grant balances and generates statutory Utilization Certificate PDFs with zero arithmetic errors."),
         ("Geo-Tagged Site Audits", "Mandatory mobile riverbank photos with device GPS coordinates and timestamps; blocks duplicate or stock photos."),
         ("River Basin GIS Map", "Real-time spatial tracking across Teesta, Barak, Dhansiri, Lohit, Simsang & Siang basins with satellite views."),
@@ -250,8 +250,9 @@ def build_clean_presentation(output_file):
 
 if __name__ == "__main__":
     out_files = [
-        r"d:\fmbap-portal-main - Copy\FMBAP_Portal_Single_Page_Summary.pptx",
-        r"d:\fmbap-portal-main - Copy\FMBAP_Portal_Executive_OnePager.pptx"
+        r"d:\fmbap-portal-main - Copy\FMBAP_Portal_Executive_Summary_Govt.pptx",
+        r"d:\fmbap-portal-main - Copy\FMBAP_Portal_Executive_OnePager.pptx",
+        r"d:\fmbap-portal-main - Copy\FMBAP_Portal_Single_Page_Summary.pptx"
     ]
     for f in out_files:
         try:
